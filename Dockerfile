@@ -29,6 +29,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 
+COPY bin/t /usr/local/bin/t
+RUN chmod +x /usr/local/bin/t
+
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
     && echo 'source <(fzf --zsh)' >> /root/.zshrc
 
