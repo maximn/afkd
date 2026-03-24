@@ -28,6 +28,7 @@
 | `*-workspace` | `/workspace` | Working directory |
 | `*-claude-config` | `/root/.claude` | Claude Code auth, settings, sessions |
 | `*-dotconfig` | `/root/.config` | App configs (gh, starship, etc.) |
+| `*-codex` | `/root/.codex` | Codex CLI auth and settings |
 | `*-dev` | `/root/dev` | Development projects |
 
 ## Healthcheck
