@@ -10,15 +10,16 @@
 
 | Variable | Required | Description |
 |---|---|---|
-| `SSH_PUBLIC_KEY` | Yes | Public SSH key for root access |
+| `SSH_PUBLIC_KEYS` | Yes | Multiline — one SSH public key per line (`cat ~/.ssh/id_ed25519.pub`) |
 | `GIT_USER_NAME` | No | Git author name (default: Novak) |
 | `GIT_USER_EMAIL` | No | Git author email |
 
 ## Ports
 
-| Port | Mapping | Description |
-|---|---|---|
-| 22 | 2222:22 | SSH access |
+| Setting | Value |
+|---|---|
+| Port (Exposes) | `22` |
+| Port Mappings | `2222:22` |
 
 ## Persistent Storage (Volumes)
 

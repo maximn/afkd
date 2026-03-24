@@ -38,7 +38,7 @@ RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
 WORKDIR /workspace
 EXPOSE 22
 
-CMD echo "${SSH_PUBLIC_KEY}" > /root/.ssh/authorized_keys && \
+CMD echo "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys && \
     chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys && \
     git config --global user.name "${GIT_USER_NAME:-Novak}" && \
     git config --global user.email "${GIT_USER_EMAIL:-your@email.com}" && \
