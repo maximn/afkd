@@ -1,0 +1,23 @@
+#!/bin/zsh
+# t - tmux session manager
+#   t           → attach/create session "main"
+#   t work      → attach/create session "work"
+#   t -l        → list sessions
+#   t -k work   → kill session "work"
+
+case "$1" in
+  -l|--list)
+    tmux list-sessions 2>/dev/null || echo "No active sessions"
+    ;;
+  -k|--kill)
+    if [[ -z "$2" ]]; then
+      echo "Usage: t -k <session>"
+      exit 1
+    fi
+    tmux kill-session -t "$2"
+    ;;
+  *)
+    local session="${1:-main}"
+    exec tmux new-session -A -s "$session"
+    ;;
+esac
