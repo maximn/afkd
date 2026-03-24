@@ -54,12 +54,3 @@ ssh-keygen -R '[<server-ip>]:2222'
 --cap-add SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined --ulimit nofile=1024:1024
 ```
 
-## SSH Config (local machine)
-
-```
-Host cc
-    HostName <server-ip>
-    Port 2222
-    User root
-    IdentityFile ~/.ssh/id_ed25519
-```

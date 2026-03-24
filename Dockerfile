@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
     fzf \
     procps \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @anthropic-ai/claude-code \
+    && npm install -g @anthropic-ai/claude-code @openai/codex \
     && mkdir -p /run/sshd /root/.ssh \
     && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
     && chsh -s $(which zsh)
