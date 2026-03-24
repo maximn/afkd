@@ -29,16 +29,19 @@ RUN apt-get update && apt-get install -y \
 
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 
-# Generate SSH host keys at build time so they persist across container restarts
-RUN ssh-keygen -A
-
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
     && echo 'source <(fzf --zsh)' >> /root/.zshrc
 
 WORKDIR /workspace
 EXPOSE 22
 
-CMD echo "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys && \
+CMD if [ ! -f /root/.config/ssh_host_ed25519_key ]; then \
+      ssh-keygen -A && \
+      cp /etc/ssh/ssh_host_*_key* /root/.config/; \
+    else \
+      cp /root/.config/ssh_host_*_key* /etc/ssh/; \
+    fi && \
+    echo "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys && \
     chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys && \
     git config --global user.name "${GIT_USER_NAME:-Novak}" && \
     git config --global user.email "${GIT_USER_EMAIL:-your@email.com}" && \
