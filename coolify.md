@@ -41,6 +41,13 @@
 | Retries | 3 |
 | Start Period | 30s |
 
+## Notes
+
+SSH host keys are persisted in the `/root/.config` volume. After a fresh setup, accept the key once. If you ever recreate the volumes, clear the old key locally:
+```
+ssh-keygen -R '[<server-ip>]:2222'
+```
+
 ## Custom Docker Options
 
 ```
