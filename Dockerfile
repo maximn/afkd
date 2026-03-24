@@ -41,6 +41,7 @@ CMD if [ ! -f /root/.config/ssh_host_ed25519_key ]; then \
     else \
       cp /root/.config/ssh_host_*_key* /etc/ssh/; \
     fi && \
+    ln -sf /root/.claude/.claude.json /root/.claude.json && \
     echo "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys && \
     chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys && \
     git config --global user.name "${GIT_USER_NAME:-Novak}" && \
