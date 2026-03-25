@@ -37,7 +37,8 @@ COPY bin/t /usr/local/bin/t
 RUN chmod +x /usr/local/bin/t
 
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
-    && echo 'source <(fzf --zsh)' >> /root/.zshrc
+    && echo 'source <(fzf --zsh)' >> /root/.zshrc \
+    && echo 'cd ~/dev 2>/dev/null' >> /root/.zshrc
 
 WORKDIR /workspace
 EXPOSE 22
