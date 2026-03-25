@@ -42,9 +42,11 @@ fi
 # Playwright MCP config (always updated to track BROWSERLESS_URL changes)
 if [ -n "${BROWSERLESS_URL}" ]; then
   jq --arg url "${BROWSERLESS_URL}" '.mcpServers.playwright = {
-    "command": "npx",
-    "args": ["@playwright/mcp@latest", "--cdp-endpoint", $url]
-  }' /root/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json /root/.claude/settings.json
+    "type": "stdio",
+    "command": "playwright-mcp",
+    "args": ["--cdp-endpoint", $url],
+    "env": {}
+  }' /root/.claude/.claude.json > /tmp/claude.json && mv /tmp/claude.json /root/.claude/.claude.json
 fi
 
 # Ensure ~/dev exists
