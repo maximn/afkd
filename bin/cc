@@ -2,8 +2,6 @@
 # cc - remote dev server session manager
 #   cc                Attach to 'main' session (or create it)
 #   cc <name>         Attach to named session (or create it)
-#   cc wt             New worktree session (auto-named), launches claude --worktree
-#   cc wt <name>      New named worktree session, launches claude --worktree
 #   cc ls             List all tmux sessions on the server
 #   cc kill <name>    Kill a specific session
 #   cc -h             Show this help
@@ -17,8 +15,6 @@ cc - remote dev server session manager
 Usage:
   cc                Attach to 'main' session (or create it)
   cc <name>         Attach to named session (or create it)
-  cc wt             New worktree session (auto-named), launches claude --worktree
-  cc wt <name>      New named worktree session, launches claude --worktree
   cc ls             List all tmux sessions on the server
   cc kill <name>    Kill a specific session
   cc -h             Show this help
@@ -38,10 +34,6 @@ case "$1" in
       exit 1
     fi
     ssh "$SSH_HOST" "tmux kill-session -t '$2'"
-    ;;
-  wt)
-    local session="${2:-wt-$(head -c4 /dev/urandom | xxd -p | cut -c1-4)}"
-    ssh -t "$SSH_HOST" "TERM=xterm-256color tmux new-session -s '$session' 'claude --worktree'"
     ;;
   *)
     local session="${1:-main}"

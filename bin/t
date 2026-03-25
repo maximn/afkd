@@ -2,8 +2,6 @@
 # t - tmux session manager (server-side)
 #   t               → attach/create session "main"
 #   t <name>        → attach/create session "<name>"
-#   t wt            → new worktree session (auto-named), launches claude --worktree
-#   t wt <name>     → new named worktree session, launches claude --worktree
 #   t ls            → list sessions
 #   t kill <name>   → kill session
 #   t -l            → list sessions (compat)
@@ -19,10 +17,6 @@ case "$1" in
       exit 1
     fi
     tmux kill-session -t "$2"
-    ;;
-  wt)
-    local session="${2:-wt-$(head -c4 /dev/urandom | xxd -p | cut -c1-4)}"
-    exec tmux new-session -s "$session" "claude --worktree"
     ;;
   *)
     local session="${1:-main}"
