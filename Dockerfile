@@ -27,12 +27,14 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @openai/codex @playwright/mcp \
-    && npm install -g @anthropic-ai/claude-code \
+    && curl -fsSL https://claude.ai/install.sh | bash \
     && mkdir -p /run/sshd /root/.ssh \
     && FZF_VERSION=$(curl -s https://api.github.com/repos/junegunn/fzf/releases/latest | grep tag_name | cut -d '"' -f 4 | tr -d v) \
     && curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" | tar -xz -C /usr/local/bin \
     && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
     && chsh -s $(which zsh)
+
+RUN cp -a /root/.claude/local /opt/claude-local
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
@@ -43,7 +45,8 @@ COPY bin/t /usr/local/bin/t
 COPY bin/cc /usr/local/bin/cc
 RUN chmod +x /usr/local/bin/t /usr/local/bin/cc
 
-RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
+RUN echo 'export PATH="$HOME/.claude/local/bin:$PATH"' >> /root/.zshrc \
+    && echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
     && echo 'source <(fzf --zsh)' >> /root/.zshrc \
     && echo 'cd ~/dev 2>/dev/null' >> /root/.zshrc
 
