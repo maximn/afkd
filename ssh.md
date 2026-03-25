@@ -40,9 +40,20 @@ cc --raw        # plain SSH, no tmux
 cc --list       # list active tmux sessions
 ```
 
+## Remote `t` Command
+
+When connected via plain SSH (e.g., from a phone), use the `t` command on the remote machine:
+
+```bash
+t              # attach/create tmux session "main"
+t work         # attach/create tmux session "work"
+t -l           # list active sessions
+t -k work      # kill session "work"
+```
+
 Inside a tmux session, run `claude` or `codex` to start coding.
 
-Detach from tmux with `Ctrl+b d` — the session keeps running. Reconnect anytime with `cc`.
+Detach from tmux with `Ctrl+b d` — the session keeps running. Reconnect anytime with `cc` or `t`.
 
 ## Troubleshooting
 
