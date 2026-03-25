@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     htop \
     procps \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @openai/codex \
+    && npm install -g @openai/codex @playwright/mcp \
     && curl -fsSL https://claude.ai/install.sh | bash \
     && mkdir -p /run/sshd /root/.ssh \
     && FZF_VERSION=$(curl -s https://api.github.com/repos/junegunn/fzf/releases/latest | grep tag_name | cut -d '"' -f 4 | tr -d v) \

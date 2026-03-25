@@ -21,12 +21,12 @@ git config --global user.name "${GIT_USER_NAME:-Novak}"
 git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
 
 # Forward container env vars to SSH sessions
-env | grep -E '^(GH_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|CODEX_|CLAUDE_)' \
+env | grep -E '^(GH_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|CODEX_|CLAUDE_|BROWSERLESS_)' \
   | sed 's/^/export /' > /root/.zshenv
 
 # Claude Code default settings
+mkdir -p /root/.claude
 if [ ! -f /root/.claude/settings.json ]; then
-  mkdir -p /root/.claude
   cat > /root/.claude/settings.json <<'SETTINGS'
 {
   "permissions": {
@@ -37,6 +37,14 @@ if [ ! -f /root/.claude/settings.json ]; then
   "alwaysThinkingEnabled": true
 }
 SETTINGS
+fi
+
+# Playwright MCP config (always updated to track BROWSERLESS_URL changes)
+if [ -n "${BROWSERLESS_URL}" ]; then
+  jq --arg url "${BROWSERLESS_URL}" '.mcpServers.playwright = {
+    "command": "npx",
+    "args": ["@playwright/mcp@latest", "--cdp-endpoint", $url]
+  }' /root/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json /root/.claude/settings.json
 fi
 
 # Ensure ~/dev exists
