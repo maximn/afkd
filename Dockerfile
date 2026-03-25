@@ -19,13 +19,16 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     zsh \
-    fzf \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code @openai/codex \
     && mkdir -p /run/sshd /root/.ssh \
+    && curl -fsSL https://raw.githubusercontent.com/junegunn/fzf/master/install --output /tmp/fzf-install && bash /tmp/fzf-install --bin && cp /root/.fzf/bin/fzf /usr/local/bin/ && rm -rf /tmp/fzf-install /root/.fzf \
     && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
     && chsh -s $(which zsh)
+
+RUN curl -fsSL https://raw.githubusercontent.com/ghostty-org/ghostty/main/src/terminfo/ghostty.terminfo -o /tmp/ghostty.terminfo \
+    && tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 
