@@ -9,9 +9,6 @@ else
   cp /root/.config/ssh_host_*_key* /etc/ssh/
 fi
 
-# Claude Code native install (always sync from build cache to pick up updates)
-cp -a /opt/claude-local /root/.claude/local
-
 # Claude Code config symlink
 ln -sf /root/.claude/.claude.json /root/.claude.json
 
