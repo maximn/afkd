@@ -23,7 +23,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @anthropic-ai/claude-code @openai/codex \
     && mkdir -p /run/sshd /root/.ssh \
-    && curl -fsSL https://raw.githubusercontent.com/junegunn/fzf/master/install --output /tmp/fzf-install && bash /tmp/fzf-install --bin && cp /root/.fzf/bin/fzf /usr/local/bin/ && rm -rf /tmp/fzf-install /root/.fzf \
+    && FZF_VERSION=$(curl -s https://api.github.com/repos/junegunn/fzf/releases/latest | grep tag_name | cut -d '"' -f 4 | tr -d v) \
+    && curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" | tar -xz -C /usr/local/bin \
     && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
     && chsh -s $(which zsh)
 
