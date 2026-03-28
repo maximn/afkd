@@ -20,6 +20,13 @@ chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
 git config --global user.name "${GIT_USER_NAME:-Novak}"
 git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
 
+# GitHub SSH key (passed via GITHUB_SSH_KEY env var)
+if [ -n "${GITHUB_SSH_KEY}" ]; then
+  echo "${GITHUB_SSH_KEY}" > /root/.ssh/id_ed25519
+  chmod 600 /root/.ssh/id_ed25519
+  ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
+fi
+
 # Forward container env vars to SSH sessions
 env | grep -E '^(GH_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|CODEX_|CLAUDE_|BROWSERLESS_)' \
   | sed 's/^/export /' > /root/.zshenv

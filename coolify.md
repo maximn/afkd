@@ -13,6 +13,7 @@
 | `SSH_PUBLIC_KEYS` | Yes | Multiline — one SSH public key per line (`cat ~/.ssh/id_ed25519.pub`) |
 | `GIT_USER_NAME` | No | Git author name (default: Novak) |
 | `GIT_USER_EMAIL` | No | Git author email |
+| `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access (`cat ~/.ssh/remote-claude`). Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
 | `BROWSERLESS_URL` | No | CDP WebSocket URL of Browserless service (see [Browser Service](#browser-service-browserless) section) |
 
 ## Ports
