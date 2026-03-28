@@ -22,12 +22,12 @@ git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
 
 # GitHub SSH key (via GITHUB_SSH_KEY env var)
 if [ -n "${GITHUB_SSH_KEY}" ]; then
-  printf '%s\n' "${GITHUB_SSH_KEY}" | sed 's/\r$//' > /root/.ssh/remote-claude
-  chmod 600 /root/.ssh/remote-claude
+  printf '%s\n' "${GITHUB_SSH_KEY}" | sed 's/\r$//' > /root/.ssh/github_ed25519
+  chmod 600 /root/.ssh/github_ed25519
   ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
   cat > /root/.ssh/config <<'SSHCFG'
 Host github.com
-  IdentityFile /root/.ssh/remote-claude
+  IdentityFile /root/.ssh/github_ed25519
   IdentitiesOnly yes
 SSHCFG
   chmod 600 /root/.ssh/config
