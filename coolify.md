@@ -13,7 +13,7 @@
 | `SSH_PUBLIC_KEYS` | Yes | Multiline — one SSH public key per line (`cat ~/.ssh/id_ed25519.pub`) |
 | `GIT_USER_NAME` | No | Git author name (default: Novak) |
 | `GIT_USER_EMAIL` | No | Git author email |
-| `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access — needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
+| `GITHUB_SSH_KEY` | No | **Base64-encoded** private SSH key for GitHub access — needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Generate with `base64 < ~/.ssh/remote-claude \| tr -d '\n'`. Set as **multiline** in Coolify. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
 | `BROWSERLESS_URL` | No | CDP WebSocket URL of Browserless service (see [Browser Service](#browser-service-browserless) section) |
 
 ## Ports
