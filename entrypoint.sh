@@ -22,7 +22,7 @@ git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
 
 # GitHub SSH key (base64-encoded via GITHUB_SSH_KEY env var)
 if [ -n "${GITHUB_SSH_KEY}" ]; then
-  echo "${GITHUB_SSH_KEY}" | base64 -d > /root/.ssh/github_ed25519
+  printf '%s\n' "${GITHUB_SSH_KEY}" > /root/.ssh/github_ed25519
   chmod 600 /root/.ssh/github_ed25519
   ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
   cat >> /root/.ssh/config <<'SSHCFG'
