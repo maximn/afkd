@@ -12,6 +12,7 @@ RUN (type -p wget >/dev/null || apt-get update && apt-get install -y wget) \
 RUN apt-get update && apt-get install -y \
     openssh-server \
     git \
+    git-crypt \
     tmux \
     curl \
     wget \
