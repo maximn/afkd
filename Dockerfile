@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:24-slim
 
 ENV LANG=C.UTF-8
 
@@ -32,6 +32,9 @@ RUN apt-get update && apt-get install -y \
     && FZF_VERSION=$(curl -s https://api.github.com/repos/junegunn/fzf/releases/latest | grep tag_name | cut -d '"' -f 4 | tr -d v) \
     && curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" | tar -xz -C /usr/local/bin \
     && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
+    && curl -fsSL https://github.com/abhinav/git-spice/releases/latest/download/git-spice.Linux-x86_64.tar.gz \
+       | tar -xz -C /usr/local/bin git-spice \
+    && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs \
     && chsh -s $(which zsh)
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
@@ -43,8 +46,10 @@ COPY bin/t /usr/local/bin/t
 COPY bin/cc /usr/local/bin/cc
 RUN chmod +x /usr/local/bin/t /usr/local/bin/cc
 
+COPY git-aliases.zsh /root/.git-aliases.zsh
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
     && echo 'source <(fzf --zsh)' >> /root/.zshrc \
+    && echo 'source /root/.git-aliases.zsh' >> /root/.zshrc \
     && echo 'cd ~/dev 2>/dev/null' >> /root/.zshrc
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
