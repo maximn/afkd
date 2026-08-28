@@ -37,14 +37,23 @@ RUN apt-get update && apt-get install -y \
     && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs \
     && chsh -s $(which zsh)
 
+# Pinned rather than :latest - herdr is pre-1.0 and ships stable releases
+# weekly, so an unpinned fetch would change the image without a commit.
+# renovate: datasource=github-releases depName=herdrdev/herdr
+ARG HERDR_VERSION=0.8.2
+RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-x86_64" \
+      -o /usr/local/bin/herdr \
+    && chmod +x /usr/local/bin/herdr
+
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 
 COPY bin/t /usr/local/bin/t
+COPY bin/h /usr/local/bin/h
 COPY bin/cc /usr/local/bin/cc
-RUN chmod +x /usr/local/bin/t /usr/local/bin/cc
+RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/cc
 
 COPY git-aliases.zsh /root/.git-aliases.zsh
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
