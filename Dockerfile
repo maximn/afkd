@@ -53,7 +53,8 @@ RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/s
 COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h
 COPY bin/cc /usr/local/bin/cc
-RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/cc
+COPY bin/ch /usr/local/bin/ch
+RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/cc /usr/local/bin/ch
 
 COPY git-aliases.zsh /root/.git-aliases.zsh
 RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
