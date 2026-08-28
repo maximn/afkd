@@ -52,6 +52,29 @@ if [ ! -f /root/.claude/settings.json ]; then
 SETTINGS
 fi
 
+# Agent lifecycle notifications. Merged on every boot rather than seeded once,
+# so the wiring stays declarative and follows NTFY_URL changes. This is what
+# lets a detached session page a phone instead of needing someone attached.
+if [ -n "${NTFY_URL}" ]; then
+  ntfy_auth=""
+  if [ -n "${NTFY_TOKEN}" ]; then
+    ntfy_auth="-H \"Authorization: Bearer ${NTFY_TOKEN}\""
+  fi
+  needs_you="jq -r '.message // \"needs attention\"' | curl -s ${ntfy_auth} -H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- '${NTFY_URL}'"
+  finished="curl -s ${ntfy_auth} -H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' '${NTFY_URL}'"
+
+  # A notification-config failure must never stop sshd from coming up.
+  if jq --arg needs_you "${needs_you}" --arg finished "${finished}" \
+       '.hooks.Notification = [{"hooks":[{"type":"command","command":$needs_you}]}]
+        | .hooks.Stop       = [{"hooks":[{"type":"command","command":$finished}]}]' \
+       /root/.claude/settings.json > /tmp/settings.json 2>/dev/null; then
+    mv /tmp/settings.json /root/.claude/settings.json
+  else
+    echo "warning: could not merge notification hooks into settings.json" >&2
+    rm -f /tmp/settings.json
+  fi
+fi
+
 # Playwright MCP config (always updated to track BROWSERLESS_URL changes)
 if [ -n "${BROWSERLESS_URL}" ]; then
   jq --arg url "${BROWSERLESS_URL}" '.mcpServers.playwright = {
