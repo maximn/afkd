@@ -37,6 +37,10 @@ case "$1" in
     ;;
   *)
     local session="${1:-main}"
-    ssh -t "$SSH_HOST" "TERM=xterm-256color tmux new-session -A -s '$session'"
+    # Keep the forwarded TERM when the server has that terminfo entry (the
+    # image ships xterm-ghostty), fall back only for clients it doesn't know.
+    # COLORTERM is never forwarded by ssh, so set it for truecolor apps.
+    ssh -t "$SSH_HOST" "infocmp \$TERM >/dev/null 2>&1 || export TERM=xterm-256color; \
+      COLORTERM=truecolor tmux new-session -A -s '$session'"
     ;;
 esac
