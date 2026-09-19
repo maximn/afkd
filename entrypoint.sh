@@ -64,9 +64,19 @@ SSHCFG
   chmod 600 /root/.ssh/config
 fi
 
-# Forward container env vars to SSH sessions
-env | grep -E '^(GH_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|CODEX_|CLAUDE_|BROWSERLESS_)' \
-  | sed 's/^/export /' > /root/.zshenv
+# Forward container env vars to SSH sessions. Values can hold spaces, quotes
+# or newlines (an API key with a $, a multiline token), so each one is emitted
+# with %q rather than by line-parsing `env` -- one unquoted value would
+# otherwise corrupt itself and every export after it. bash's %q output is
+# valid zsh, including the $'...' form it uses for newlines.
+{
+  for name in GH_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY \
+              "${!CODEX_@}" "${!CLAUDE_@}"; do
+    [ -n "${!name+x}" ] || continue
+    printf 'export %s=%q\n' "$name" "${!name}"
+  done
+} > /root/.zshenv
+chmod 600 /root/.zshenv
 
 # Claude Code default settings
 mkdir -p /root/.claude
