@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y \
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.4
-RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" \
+RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_$(dpkg --print-architecture).tar.gz" \
       | tar -xz -C /usr/local/bin
 
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
@@ -50,14 +50,14 @@ RUN sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes --version "v${
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
 ARG GIT_SPICE_VERSION=0.31.2
-RUN curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-x86_64.tar.gz" \
+RUN curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-$(uname -m).tar.gz" \
       | tar -xz -C /usr/local/bin git-spice \
     && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs
 
 # herdr is pre-1.0 and ships stable releases weekly.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
 ARG HERDR_VERSION=0.9.1
-RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-x86_64" \
+RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-$(uname -m)" \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
