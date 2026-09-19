@@ -111,3 +111,13 @@ dockerfile_arg() {
   run in_box grep -qE '^PasswordAuthentication no' /etc/ssh/sshd_config
   [ "$status" -eq 0 ]
 }
+
+# Trivy caught these baked into the image: openssh-server's postinst generates
+# them at build time, so every container from one image shared a host key and
+# the entrypoint's `ssh-keygen -A` never replaced them. Asserted against the
+# image rather than a running container, since the entrypoint creates them.
+@test "bakes no ssh host keys into the image" {
+  run docker run --rm "$IMAGE" sh -c 'ls /etc/ssh/ssh_host_* 2>/dev/null | wc -l'
+  [ "$status" -eq 0 ]
+  [ "${output//[[:space:]]/}" = "0" ]
+}

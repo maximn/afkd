@@ -15,6 +15,12 @@ RUN (command -v wget >/dev/null || apt-get update && apt-get install -y wget) \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
+# openssh-server's postinst generates host keys during the install below.
+# Left in place they are baked into the image and shared by every container
+# built from it, and the entrypoint's `ssh-keygen -A` would never replace
+# them -- it only creates key types that are missing. Removing them here
+# means each deployment generates its own on first boot, which is what the
+# entrypoint already claims to do.
 RUN apt-get update && apt-get install -y \
     openssh-server \
     git \
@@ -34,6 +40,7 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
+    && rm -f /etc/ssh/ssh_host_* \
     && chsh -s "$(which zsh)"
 
 # Everything below is version-pinned rather than fetched as :latest, so the

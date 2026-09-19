@@ -24,6 +24,9 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          # gitleaks walks the PR's commits; a depth-1 clone gives it no range.
+          fetch-depth: 0
 
       - name: actionlint
         uses: docker://rhysd/actionlint:1.7.12
