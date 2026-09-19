@@ -27,8 +27,34 @@ git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
 
 # GitHub SSH key (via GITHUB_SSH_KEY env var)
 if [ -n "${GITHUB_SSH_KEY}" ]; then
-  printf '%s\n' "${GITHUB_SSH_KEY}" > /root/.ssh/github_ed25519
-  chmod 600 /root/.ssh/github_ed25519
+  # This has flip-flopped between base64 and raw four times (see 246779d,
+  # 68e6a7f, f39b1d7): each form works in one Coolify setup and breaks the
+  # other, and the docs have been out of sync with the code since 45350b9.
+  # Accept both and stop guessing. CRs are stripped because Coolify can hand
+  # back CRLF, which makes openssl fail with an opaque libcrypto error (ce7058e).
+  # umask so the key is never briefly world-readable between write and chmod.
+  if printf '%s' "${GITHUB_SSH_KEY}" | grep -q -- '-----BEGIN'; then
+    (umask 077; printf '%s\n' "${GITHUB_SSH_KEY}" | sed 's/\r$//' > /root/.ssh/github_ed25519)
+  else
+    (umask 077; printf '%s' "${GITHUB_SSH_KEY}" | tr -d '\r\n' | base64 -d > /root/.ssh/github_ed25519 2>/dev/null) || true
+  fi
+
+  # A bad key must not stop sshd from coming up - you need a way in to fix it.
+  if grep -q -- '-----BEGIN' /root/.ssh/github_ed25519 2>/dev/null; then
+    # ssh rejects a key file whose last line has no trailing newline
+    if [ -n "$(tail -c1 /root/.ssh/github_ed25519)" ]; then
+      echo >> /root/.ssh/github_ed25519
+    fi
+    chmod 600 /root/.ssh/github_ed25519
+    gh_key_ok=1
+  else
+    echo "warning: GITHUB_SSH_KEY is neither a PEM private key nor base64-encoded one; skipping GitHub SSH setup" >&2
+    rm -f /root/.ssh/github_ed25519
+    gh_key_ok=0
+  fi
+fi
+
+if [ "${gh_key_ok:-0}" = "1" ]; then
   ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
   cat > /root/.ssh/config <<'SSHCFG'
 Host github.com
