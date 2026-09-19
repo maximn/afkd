@@ -3,6 +3,11 @@
 # so a pinned apt version breaks the build the day it rolls. The versions that
 # matter (fzf, starship, git-spice, herdr, the npm CLIs) are pinned as ARGs and
 # bumped by Renovate. The same reasoning is written into the Dockerfile.
+#
+# DL4001: "either use wget or curl, but not both".
+# The image ships both on purpose -- wget bootstraps the gh keyring (that's
+# upstream's own install snippet) and both are installed for interactive use.
 ignored:
   - DL3008
+  - DL4001
 failure-threshold: warning

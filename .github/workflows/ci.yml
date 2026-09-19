@@ -47,6 +47,10 @@ jobs:
         with:
           dockerfile: Dockerfile
           config: .hadolint.yaml
+          # Passed as HADOLINT_FAILURE_THRESHOLD, which wins over the config
+          # file -- leaving it unset silently reinstates the action's `info`
+          # default and fails the build on style hints.
+          failure-threshold: warning
 
       # Free for personal repos; organisations need GITLEAKS_LICENSE.
       - name: gitleaks
@@ -77,7 +81,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Install bats
-        run: npm install -g bats@1.14.0
+        run: npm install -g bats@1.13.0
 
       - name: Run test suite
         run: bats --print-output-on-failure --timing tests/

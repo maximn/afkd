@@ -1,9 +1,15 @@
 FROM node:24.21.0-slim
 
+# Every fetch below is `curl ... | tar`. Under the default `sh -c` a failed
+# download still exits 0 as long as tar is happy with the empty stream, so
+# the image builds and ships without the tool. pipefail makes it fail loudly.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ENV LANG=C.UTF-8
 
 RUN (type -p wget >/dev/null || apt-get update && apt-get install -y wget) \
-    && mkdir -p -m 755 /etc/apt/keyrings \
+    && mkdir -p /etc/apt/keyrings \
+    && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -28,7 +34,7 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
-    && chsh -s $(which zsh)
+    && chsh -s "$(which zsh)"
 
 # Everything below is version-pinned rather than fetched as :latest, so the
 # image only changes when a commit changes it and any build can be reproduced

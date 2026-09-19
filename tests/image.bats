@@ -67,6 +67,29 @@ dockerfile_arg() {
   [[ "$output" == *"$want"* ]]
 }
 
+# git-spice and herdr are fetched as release *assets* rather than via an
+# installer, so a renamed or re-tagged asset yields a file that exists and does
+# not run. Presence is not enough for these two -- execute them.
+@test "installs the pinned git-spice version, reachable as gs" {
+  local want
+  want="$(dockerfile_arg GIT_SPICE_VERSION)"
+  [ -n "$want" ]
+
+  run in_box gs --version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$want"* ]]
+}
+
+@test "installs the pinned herdr version" {
+  local want
+  want="$(dockerfile_arg HERDR_VERSION)"
+  [ -n "$want" ]
+
+  run in_box herdr --version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$want"* ]]
+}
+
 @test "root logs into zsh with the shell config sourced" {
   run in_box getent passwd root
   [[ "$output" == *"zsh"* ]]
