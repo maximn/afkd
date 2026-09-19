@@ -1,4 +1,4 @@
-FROM node:24-slim
+FROM node:24.21.0-slim
 
 ENV LANG=C.UTF-8
 
@@ -27,23 +27,52 @@ RUN apt-get update && apt-get install -y \
     htop \
     procps \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @openai/codex @playwright/mcp @anthropic-ai/claude-code \
     && mkdir -p /run/sshd /root/.ssh \
-    && FZF_VERSION=$(curl -s https://api.github.com/repos/junegunn/fzf/releases/latest | grep tag_name | cut -d '"' -f 4 | tr -d v) \
-    && curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" | tar -xz -C /usr/local/bin \
-    && sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes \
-    && curl -fsSL https://github.com/abhinav/git-spice/releases/latest/download/git-spice.Linux-x86_64.tar.gz \
-       | tar -xz -C /usr/local/bin git-spice \
-    && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs \
     && chsh -s $(which zsh)
 
-# Pinned rather than :latest - herdr is pre-1.0 and ships stable releases
-# weekly, so an unpinned fetch would change the image without a commit.
-# renovate: datasource=github-releases depName=herdrdev/herdr
+# Everything below is version-pinned rather than fetched as :latest, so the
+# image only changes when a commit changes it and any build can be reproduced
+# from its SHA. Renovate owns the bumps via the annotations. Each ARG sits
+# directly above the RUN that consumes it so a bump only busts that one layer;
+# the order runs stable -> churny for the same reason.
+#
+# apt packages are deliberately not pinned: Debian drops old versions from the
+# archive, so a pinned apt version breaks the build the day it rolls.
+
+# renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
+ARG FZF_VERSION=0.74.4
+RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin
+
+# renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
+ARG STARSHIP_VERSION=1.26.0
+RUN sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes --version "v${STARSHIP_VERSION}"
+
+# renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
+ARG GIT_SPICE_VERSION=0.31.2
+RUN curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-x86_64.tar.gz" \
+      | tar -xz -C /usr/local/bin git-spice \
+    && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs
+
+# herdr is pre-1.0 and ships stable releases weekly.
+# renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
 ARG HERDR_VERSION=0.9.1
 RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-x86_64" \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
+
+# Last of the installs: these three publish most often, so keep the layers
+# they invalidate to a minimum.
+# renovate: datasource=npm depName=@openai/codex
+ARG CODEX_VERSION=0.155.1
+# renovate: datasource=npm depName=@playwright/mcp
+ARG PLAYWRIGHT_MCP_VERSION=0.0.82
+# renovate: datasource=npm depName=@anthropic-ai/claude-code
+ARG CLAUDE_CODE_VERSION=2.1.278
+RUN npm install -g \
+      "@openai/codex@${CODEX_VERSION}" \
+      "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
