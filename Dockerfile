@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
 # Pinned rather than :latest - herdr is pre-1.0 and ships stable releases
 # weekly, so an unpinned fetch would change the image without a commit.
 # renovate: datasource=github-releases depName=herdrdev/herdr
-ARG HERDR_VERSION=0.8.2
+ARG HERDR_VERSION=0.9.1
 RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-x86_64" \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
