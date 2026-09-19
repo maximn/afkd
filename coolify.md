@@ -14,7 +14,6 @@
 | `GIT_USER_NAME` | No | Git author name (default: Novak) |
 | `GIT_USER_EMAIL` | No | Git author email |
 | `GITHUB_SSH_KEY` | No | **Base64-encoded** private SSH key for GitHub access. Generate with `base64 < ~/.ssh/remote-claude \| tr -d '\n'`. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
-| `BROWSERLESS_URL` | No | CDP WebSocket URL of Browserless service (see [Browser Service](#browser-service-browserless) section) |
 
 ## Ports
 
@@ -50,20 +49,6 @@ SSH host keys are persisted in the `/root/.config` volume. After a fresh setup, 
 ```
 ssh-keygen -R '[46.224.159.50]:2222'
 ```
-
-## Browser Service (Browserless)
-
-A shared headless browser runs as a separate Coolify service, connected via CDP.
-
-### Setup
-
-1. In Coolify → **New Service** → select **Browserless** template → deploy
-2. Both services must share a Docker network. In Coolify, add the Browserless service to the same network as remote-claude (the `coolify` network), or connect manually:
-   ```
-   docker network connect coolify <browserless-container-name>
-   ```
-3. Set `BROWSERLESS_URL` env var on remote-claude to `ws://<browserless-hostname>:3000`
-4. Claude Code uses Playwright MCP to connect — config is injected automatically on boot
 
 ## Custom Docker Options
 

@@ -116,16 +116,6 @@ if [ -n "${NTFY_URL}" ]; then
   fi
 fi
 
-# Playwright MCP config (always updated to track BROWSERLESS_URL changes)
-if [ -n "${BROWSERLESS_URL}" ]; then
-  jq --arg url "${BROWSERLESS_URL}" '.mcpServers.playwright = {
-    "type": "stdio",
-    "command": "playwright-mcp",
-    "args": ["--cdp-endpoint", $url],
-    "env": {}
-  }' /root/.claude/.claude.json > /tmp/claude.json && mv /tmp/claude.json /root/.claude/.claude.json
-fi
-
 # Ensure ~/dev exists
 mkdir -p /root/dev
 
