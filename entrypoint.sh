@@ -12,8 +12,13 @@ fi
 # Claude Code config symlink
 ln -sf /root/.claude/.claude.json /root/.claude.json
 
-# SSH authorized keys
-echo "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys
+# SSH authorized keys. Password auth is off, so no keys means no way in and a
+# container that looks healthy while being unreachable. Fail loudly instead.
+if [ -z "${SSH_PUBLIC_KEYS}" ]; then
+  echo "error: SSH_PUBLIC_KEYS is empty - nothing could log in. Set it to one public key per line." >&2
+  exit 1
+fi
+printf '%s\n' "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys
 chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
 
 # Git config
