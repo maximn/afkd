@@ -7,7 +7,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
 
-RUN (type -p wget >/dev/null || apt-get update && apt-get install -y wget) \
+RUN (command -v wget >/dev/null || apt-get update && apt-get install -y wget) \
     && mkdir -p /etc/apt/keyrings \
     && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
