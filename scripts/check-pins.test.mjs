@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+// Tests for check-pins.mjs. A guard that cannot fail is the same false
+// confidence it was written to remove, so every rule gets a case that breaks
+// the real Dockerfile in a plausible way and asserts the checker notices.
+//
+// Run with `node scripts/check-pins.test.mjs`; CI runs it alongside the check.
+
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { check } from './check-pins.mjs'
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const DOCKERFILE = readFileSync(join(root, 'Dockerfile'), 'utf8')
+const RENOVATE = JSON.parse(readFileSync(join(root, 'renovate.json'), 'utf8'))
+
+let failed = 0
+
+// Asserts the mutated Dockerfile trips a rule whose message contains `expect`.
+const rejects = (name, mutate, expect, renovate = RENOVATE) => {
+  const { problems } = check(mutate(DOCKERFILE), renovate)
+  const hit = problems.find((p) => p.what.includes(expect))
+  if (hit) return console.log(`  ✓ rejects ${name}`)
+  failed++
+  console.error(`  ✗ rejects ${name}`)
+  console.error(`      expected a problem containing: ${expect}`)
+  console.error(`      got: ${problems.map((p) => p.what).join(' | ') || '(none)'}`)
+}
+
+const accepts = (name, mutate = (s) => s, renovate = RENOVATE) => {
+  const { problems } = check(mutate(DOCKERFILE), renovate)
+  if (problems.length === 0) return console.log(`  ✓ accepts ${name}`)
+  failed++
+  console.error(`  ✗ accepts ${name}`)
+  console.error(`      unexpected: ${problems.map((p) => `${p.line}: ${p.what}`).join(' | ')}`)
+}
+
+console.log('check-pins:')
+
+// The real files must pass, or every case below is meaningless.
+accepts('the Dockerfile as committed')
+
+rejects('an ARG with no annotation',
+  (s) => `${s}\nARG NEWTOOL_VERSION=1.0.0\n`,
+  "no '# renovate:' annotation")
+
+rejects('an annotation with no ARG under it',
+  (s) => `${s}\n# renovate: datasource=npm depName=orphan\nRUN echo hi\n`,
+  'not followed by an ARG')
+
+// The subtle one: reads fine, invisible to Renovate. This is the shape of the
+// bug that went unnoticed for five months.
+rejects('an annotation whose keys are in the wrong order',
+  (s) => s.replace('# renovate: datasource=npm depName=@openai/codex',
+    '# renovate: depName=@openai/codex datasource=npm'),
+  'never bump it')
+
+rejects('an unpinned global npm install',
+  (s) => `${s}\nRUN npm install -g some-new-tool\n`,
+  'without a version')
+
+rejects('a "latest" release URL',
+  (s) => `${s}\nRUN curl -fsSL https://github.com/o/r/releases/latest/download/x -o /usr/local/bin/x\n`,
+  '"latest" release URL')
+
+rejects('a download that pins nothing',
+  (s) => `${s}\nRUN curl -fsSL https://example.com/tool -o /usr/local/bin/tool\n`,
+  'without interpolating')
+
+rejects('an untagged base image',
+  (s) => s.replace(/^FROM \S+/m, 'FROM node:latest'),
+  'untagged or :latest')
+
+rejects('renovate.json with the customManager removed',
+  (s) => s,
+  'no regex customManager',
+  { ...RENOVATE, customManagers: [] })
+
+// The escape hatch has to work, or the next unversioned artifact gets the
+// rule deleted instead of annotated.
+accepts('a marked-ignore block that downloads without a version',
+  (s) => `${s}\n# pin-check: ignore - test fixture\nRUN curl -fsSL https://example.com/x -o /x\n`)
+
+console.log(failed === 0 ? '\nall passed' : `\n${failed} failed`)
+process.exit(failed === 0 ? 0 : 1)
