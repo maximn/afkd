@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
-# Persist SSH host keys across redeployments
+# Persist SSH host keys across redeployments. A deployment mounts a volume at
+# /root/.config, but nothing in the image creates it -- with no volume the cp
+# below is fatal under `set -e`.
+mkdir -p /root/.config
 if [ ! -f /root/.config/ssh_host_ed25519_key ]; then
   ssh-keygen -A
   cp /etc/ssh/ssh_host_*_key* /root/.config/

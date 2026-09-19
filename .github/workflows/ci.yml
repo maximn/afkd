@@ -18,6 +18,10 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      # gitleaks-action lists the PR's commits to scope its scan to the diff.
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
 
