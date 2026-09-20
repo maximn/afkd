@@ -104,15 +104,30 @@ assert_github_key_usable() {
   assert_github_key_usable
 }
 
-@test "adds the trailing newline ssh requires to a PEM key" {
-  local pem_no_newline
-  pem_no_newline="$(printf '%s' "$PRIVKEY")"
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GITHUB_SSH_KEY="$pem_no_newline"
+@test "adds the trailing newline ssh requires to a base64 key without one" {
+  # The only input that reaches the newline repair. $PRIVKEY has already lost
+  # its trailing newline to the command substitution in generate_keypair, and
+  # the PEM branch writes with `printf '%s\n'`, which puts one back
+  # unconditionally -- so a "PEM without a newline" test is byte-for-byte the
+  # raw-PEM test above and the repair is unreachable through it. base64 is
+  # decoded straight to the file, so a payload whose decoded bytes stop short
+  # is what actually needs fixing up.
+  local b64
+  b64="$(printf '%s' "$PRIVKEY" | base64 | tr -d '\n')"
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GITHUB_SSH_KEY="$b64"
   wait_ready
   assert_github_key_usable
 
   run in_box tail -c1 /root/.ssh/github_ed25519
   [ -z "$output" ]
+}
+
+@test "accepts a PEM key that arrives with its trailing newline" {
+  # What a real multiline Coolify variable hands over: the value keeps its
+  # final newline and `printf '%s\n'` then adds a second one.
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GITHUB_SSH_KEY="${PRIVKEY}"$'\n'
+  wait_ready
+  assert_github_key_usable
 }
 
 @test "survives a malformed GITHUB_SSH_KEY without blocking login" {
@@ -157,12 +172,18 @@ assert_github_key_usable() {
 
 # --- .zshenv forwarding ------------------------------------------------------
 
+# `docker exec` hands the exec'd process the container's own environment -- the
+# very `-e` values passed to `docker run`. Reading the variable back without
+# clearing it first asserts nothing about .zshenv: these three tests passed
+# with every `printf 'export ...'` line deleted from the entrypoint, which is
+# the exact regression (d432f20) they were written to guard. `env -u` clears
+# it, and zsh sources .zshenv on its own, so the explicit `source` can go too.
 @test "round-trips env values containing spaces, quotes and metacharacters" {
   local awkward='a b "c" '"'"'d'"'"' $e `f` \g'
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY="$awkward"
   wait_ready
 
-  run in_box zsh -c 'source /root/.zshenv; printf %s "$ANTHROPIC_API_KEY"'
+  run in_box env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
   [ "$status" -eq 0 ]
   [ "$output" = "$awkward" ]
 }
@@ -171,7 +192,7 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY=$'line one\nline two'
   wait_ready
 
-  run in_box zsh -c 'source /root/.zshenv; printf %s "$ANTHROPIC_API_KEY"'
+  run in_box env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
   [ "$status" -eq 0 ]
   [ "$output" = $'line one\nline two' ]
 }
@@ -181,7 +202,8 @@ assert_github_key_usable() {
     -e CLAUDE_CODE_USE_BEDROCK=1 -e CODEX_HOME=/root/.codex
   wait_ready
 
-  run in_box zsh -c 'source /root/.zshenv; printf "%s|%s" "$CLAUDE_CODE_USE_BEDROCK" "$CODEX_HOME"'
+  run in_box env -u CLAUDE_CODE_USE_BEDROCK -u CODEX_HOME \
+    zsh -c 'printf "%s|%s" "$CLAUDE_CODE_USE_BEDROCK" "$CODEX_HOME"'
   [ "$output" = "1|/root/.codex" ]
 
   run in_box grep -c 'GH_TOKEN' /root/.zshenv

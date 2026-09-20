@@ -48,12 +48,35 @@ wait_ssh() {
   [ "$output" = "connected" ]
 }
 
+# wait_ready only polls for the sshd *process*, which execs before it binds, so
+# "ssh exited non-zero" is also satisfied by connection refused. This returns 0
+# only once sshd has answered and turned the login down, and fails outright if
+# one is ever let through.
+wait_auth_refusal() {
+  local i out
+  for ((i = 0; i < 60; i++)); do
+    if out="$(ssh_box 'echo connected' 2>&1)"; then
+      echo "login succeeded with a key that is not in authorized_keys" >&2
+      return 1
+    fi
+    if [[ "$out" == *"Permission denied"* ]]; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "sshd never answered. last attempt: ${out}" >&2
+  box_logs >&2
+  return 1
+}
+
 @test "rejects a login with an unknown key" {
+  # This waited for nothing and asserted only that ssh failed, so it passed on
+  # a not-yet-listening daemon -- and would have kept passing with
+  # authorized_keys handling broken wide open.
   start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="ssh-ed25519 AAAAnotyourkey nobody@nowhere"
   wait_ready
 
-  run ssh_box 'echo connected'
-  [ "$status" -ne 0 ]
+  wait_auth_refusal
 }
 
 @test "forwarded env vars reach a non-interactive ssh command" {

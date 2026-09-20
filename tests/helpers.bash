@@ -22,10 +22,14 @@ generate_keypair() {
   PUBKEY_BARE="$(cut -d' ' -f1,2 <<<"$PUBKEY")"
 }
 
+# Recorded in a file rather than a shell array. Every caller is `$(make_volume)`
+# -- a command substitution, so the function body runs in a subshell and an
+# array append here dies with it. The volumes then outlive the run: each one
+# holds the ssh host *private* keys the entrypoint persisted.
 make_volume() {
   local v="rcc-ci-vol-$$-${RANDOM}"
   docker volume create --label "${LABEL}=1" "$v" >/dev/null
-  VOLUMES+=("$v")
+  echo "$v" >> "${BATS_FILE_TMPDIR}/volumes"
   echo "$v"
 }
 
@@ -70,14 +74,18 @@ host_port() {
   docker port "$BOX" 22/tcp | head -1 | sed 's/.*://'
 }
 
+# Anything that escapes this (an interrupted run) is still labelled:
+# `docker volume prune --filter label=rcc-ci=1` sweeps the lot.
 cleanup_box() {
   [ -n "${BOX:-}" ] && docker rm -f "$BOX" >/dev/null 2>&1
-  local v
-  for v in "${VOLUMES[@]:-}"; do
-    [ -n "$v" ] && docker volume rm -f "$v" >/dev/null 2>&1
-  done
+  local vols="${BATS_FILE_TMPDIR}/volumes" v
+  if [ -f "$vols" ]; then
+    while read -r v; do
+      [ -n "$v" ] && docker volume rm -f "$v" >/dev/null 2>&1
+    done < "$vols"
+    : > "$vols"
+  fi
   BOX=""
   CONFIG_VOL=""
-  VOLUMES=()
   return 0
 }
