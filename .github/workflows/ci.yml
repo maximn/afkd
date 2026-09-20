@@ -116,7 +116,23 @@ jobs:
           # builds whose every layer differs, so each run evicts the other's
           # entries and neither ever gets a hit.
           cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          # Only a push to main writes. A pull_request run's export lands on
+          # refs/pull/N/merge -- a scope nothing but that PR can read, dead the
+          # moment it merges. Eight merged PRs' worth of those had grown to 8GB
+          # of the 10GB repo cap, and at the cap GitHub evicts entries while
+          # buildx is still exporting: the blob it just wrote comes back
+          # `not_found` and the build fails after the image was already built.
+          # PRs still read main's cache, so nothing is lost but a write nothing
+          # could have read.
+          #
+          # ignore-error because this is an optimisation riding on the step
+          # that gates the suite: without it a cache hiccup skips every test
+          # behind a red check that reads like a test failure.
+          #
+          # `cond && 'x' || ''` is the safe direction of the expression trap
+          # documented on the action's cache-from input -- it is the inverse,
+          # `cond && '' || 'x'`, that can never yield the empty string.
+          cache-to: ${{ github.event_name == 'push' && format('type=gha,mode=max,scope={0},ignore-error=true', matrix.arch) || '' }}
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
