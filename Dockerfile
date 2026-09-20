@@ -32,7 +32,7 @@ ARG TARGETARCH
 # The marker has to stay on the line directly above the RUN: check-pins reads
 # exactly one comment line back.
 # pin-check: ignore - a signing key, not a versioned artifact
-RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y wget; fi \
+RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y --no-install-recommends wget; fi \
     && mkdir -p /etc/apt/keyrings \
     && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -46,8 +46,17 @@ RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y w
 # them -- it only creates key types that are missing. Removing them here
 # means each deployment generates its own on first boot, which is what the
 # entrypoint already claims to do.
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends, so every package below is here because something
+# names it. Three of them were arriving as recommends and are now explicit,
+# because losing them degrades the box quietly rather than breaking the build:
+# `less` is git's pager, `ncurses-term` carries the screen/tmux terminfo
+# entries that ncurses-base leaves out, and fonts-dejavu-core is what the
+# JetBrains backend rasterizes its UI with -- a backend with no fonts starts
+# and then draws nothing legible.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
+    less \
+    ncurses-term \
     git \
     git-crypt \
     tmux \
@@ -79,6 +88,7 @@ RUN apt-get update && apt-get install -y \
     libxi6 \
     libfreetype6 \
     libfontconfig1 \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
     && rm -f /etc/ssh/ssh_host_* \
