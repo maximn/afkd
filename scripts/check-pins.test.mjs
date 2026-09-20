@@ -71,6 +71,18 @@ rejects('an untagged base image',
   (s) => s.replace(/^FROM \S+/m, 'FROM node:latest'),
   'untagged or :latest')
 
+// The digest-pin shape: same rules, different manager. Worth its own cases
+// because a _REF pin is matched by a second customManager, and an ARG that
+// only the first manager sees is exactly the silent-staleness bug again.
+rejects('a _REF ARG with no annotation',
+  (s) => `${s}\nARG NEWREPO_REF=0123456789abcdef0123456789abcdef01234567\n`,
+  "no '# renovate:' annotation")
+
+rejects('a _REF pin no customManager matches',
+  (s) => s.replace('# renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh',
+    '# renovate: depName=https://github.com/ohmyzsh/ohmyzsh datasource=git-refs'),
+  'never bump it')
+
 rejects('renovate.json with the customManager removed',
   (s) => s,
   'no regex customManager',

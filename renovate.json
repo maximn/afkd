@@ -14,6 +14,18 @@
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+ARG \\w+_VERSION=(?<currentValue>\\S+)"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Commits pinned as ARG in the Dockerfile. oh-my-zsh ships no tags, so there is no version to track - git-refs watches the named branch and bumps the digest.",
+      "managerFilePatterns": [
+        "/(^|/)Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=git-refs depName=(?<depName>\\S+)\\s+ARG \\w+_REF=(?<currentDigest>\\S+)"
+      ],
+      "currentValueTemplate": "master",
+      "datasourceTemplate": "git-refs"
     }
   ],
   "packageRules": [

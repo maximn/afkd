@@ -1,26 +1,14 @@
-# Git shortcuts for the remote box.
-# Split by responsibility: raw git for inspect/stage/stash (git-spice doesn't
-# cover these), plain fallbacks for non-stacked repos, and git-spice itself for
-# the branch lifecycle / sync / submit / stack workflow.
+# Personal git aliases for the remote box.
+#
+# The bulk of the g* shortcuts (gst, gl, gp, gd, gco, gcb, gaa, gwip, gpsup, ...)
+# come from the oh-my-zsh git plugin, which mirrors the local machine. Only
+# deliberate divergences from that plugin belong here, and this file is sourced
+# after oh-my-zsh so they win.
 
-# --- raw git: inspect / stage / stash ---
-alias gst='git status'
-alias gd='git diff'
-alias gds='git diff --staged'
-alias gaa='git add --all'
-alias ga='git add'
-alias gco='git checkout'
-alias gsw='git switch'
-alias gb='git branch'
-alias gsta='git stash'
-alias gstp='git stash pop'
+# The plugin resolves the trunk via git_main_branch, which probes the remote and
+# falls back to master. Every repo reachable from this box uses main, so skip
+# the probe and keep gcm usable when the remote is unreachable.
+alias gcm='git checkout main'
 
-# --- plain fallbacks for repos not using git-spice ---
-alias gl='git pull'
-alias gp='git push'
-alias glog='git log --oneline --decorate --graph'
-
-# --- git-spice: branch lifecycle / sync / submit / stack log ---
-# gs bc (branch create), gs cc (commit create), gs bco (branch checkout),
-# gs rs (repo sync), gs bs/ss (branch/stack submit), gs ls (log short), gs up/down
-alias gs='git-spice'
+# git-spice drives the stacked-branch workflow and is on PATH as `gs` via a
+# symlink created in the Dockerfile; no alias needed.
