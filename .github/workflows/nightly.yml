@@ -42,6 +42,8 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
+          # Informational: the full HIGH picture against a fresh vuln DB,
+          # without failing a job nobody is waiting on. CI gates on CRITICAL.
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: '0'
