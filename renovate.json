@@ -2,5 +2,54 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tool versions pinned as ARG in the Dockerfile. Renovate's built-in dockerfile manager only reads FROM lines, so the '# renovate:' annotations above each ARG are invisible without this.",
+      "managerFilePatterns": [
+        "/(^|/)Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+ARG \\w+_VERSION=(?<currentValue>\\S+)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One grouped PR a week for the image toolchain rather than a PR per release - claude-code alone ships most days.",
+      "matchManagers": [
+        "custom.regex",
+        "dockerfile"
+      ],
+      "groupName": "image toolchain",
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "Patch and minor bumps land unattended once the image builds and every binary still runs. Majors always wait for a human.",
+      "matchManagers": [
+        "custom.regex",
+        "dockerfile"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "herdr is pre-1.0 and ships weekly, so a 0.x minor is a breaking change in practice - the one bump worth eyeballing.",
+      "matchDepNames": [
+        "herdrdev/herdr"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": false
+    }
   ]
 }
