@@ -26,7 +26,7 @@ jobs:
       # it 403s on the one run that matters: the one that found a secret.
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # gitleaks walks the PR's commits; a depth-1 clone gives it no range.
           fetch-depth: 0
@@ -68,7 +68,7 @@ jobs:
           done
 
       - name: hadolint
-        uses: hadolint/hadolint-action@v3.5.0
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: Dockerfile
           config: .hadolint.yaml
@@ -79,7 +79,7 @@ jobs:
 
       # Free for personal repos; organisations need GITLEAKS_LICENSE.
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -108,7 +108,7 @@ jobs:
     env:
       IMAGE: remote-claude-code:ci-${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -142,7 +142,7 @@ jobs:
           cache-to: ${{ github.event_name == 'push' && format('type=gha,mode=max,scope={0},ignore-error=true', matrix.arch) || '' }}
 
       - name: Scan image
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
           # CRITICAL blocks; HIGH is reported by the weekly rebuild instead.
