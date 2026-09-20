@@ -63,7 +63,7 @@ jobs:
       # editing one issue race each other, and the loser's body -- listing only
       # its own architecture -- is what survives.
       - name: Hand the findings to the report job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-${{ matrix.arch }}
           path: trivy.json
@@ -96,7 +96,7 @@ jobs:
       SCAN_LABEL: weekly-scan
     steps:
       - name: Collect every architecture's scan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: trivy-*
           path: scans
