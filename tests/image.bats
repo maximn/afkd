@@ -154,12 +154,15 @@ dockerfile_arg() {
   run in_box /usr/sbin/sshd -T
   [ "$status" -eq 0 ]
 
+  # Regexes, not literals: sshd -T answers in its own spelling, and
+  # prohibit-password comes back as the older synonym without-password.
   local kv
   for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
-    'permitemptypasswords no' 'permitrootlogin prohibit-password' \
+    'permitemptypasswords no' \
+    'permitrootlogin (without-password|prohibit-password)' \
     'x11forwarding no' 'maxauthtries 4' \
     'clientaliveinterval 300' 'clientalivecountmax 2'; do
-    grep -qx "$kv" <<<"$output" || {
+    grep -qE "^${kv}$" <<<"$output" || {
       echo "not in effect: $kv"
       false
     }

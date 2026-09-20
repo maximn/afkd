@@ -197,16 +197,18 @@ RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 COPY sshd_config.d/99-remote-claude.conf /etc/ssh/sshd_config.d/99-remote-claude.conf
 # A hardening file that is silently not read is worse than no hardening file,
 # so assert the end state rather than the mechanism: `sshd -T` prints the
-# config as sshd has actually merged it. It refuses to run without host keys,
+# config as sshd has actually merged it. It prints sshd's own spelling, not
+# the file's -- prohibit-password comes back as its older synonym
+# without-password -- hence the alternation rather than a literal match. It refuses to run without host keys,
 # hence the keygen -- and the rm in the same layer, so none are baked into the
 # image (tests/image.bats asserts that separately).
 RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
     && ssh-keygen -A >/dev/null \
     && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
     && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
-                 'permitrootlogin prohibit-password' 'x11forwarding no' \
-                 'maxauthtries 4' 'clientaliveinterval 300'; do \
-         grep -qx "$kv" /tmp/sshd-effective.conf \
+                 'permitrootlogin (without-password|prohibit-password)' \
+                 'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300'; do \
+         grep -qE "^${kv}$" /tmp/sshd-effective.conf \
            || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
        done \
     && rm -f /tmp/sshd-effective.conf /etc/ssh/ssh_host_*
