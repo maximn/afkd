@@ -12,12 +12,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
 
-# npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
-# writable layer and so is thrown away on every redeploy. Point it at /root/.cache
-# instead, which is a volume, so one cache volume covers npm alongside everything
-# that follows the spec (JetBrains backends and indexes, uv, pip).
-ENV NPM_CONFIG_CACHE=/root/.cache/npm
-
 # `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
 # skipped apt-get update and ran the install against empty package lists. It is
 # latent only because node:*-slim purges wget in its own build; the day the base
@@ -63,7 +57,10 @@ RUN apt-get update && apt-get install -y \
 # backend dies at startup with an UnsatisfiedLinkError and Gateway reports only
 # that it failed to start. ~5 MB; libsecret is deliberately left out because it
 # drags in glib and ICU for 57 MB to back a credential store that falls back to
-# a file.
+# a file. The list names every library the backend loads directly, including
+# the ones another entry already pulls in, so trimming one edge cannot quietly
+# remove a library that is actually needed.
+    libx11-6 \
     libxext6 \
     libxrender1 \
     libxtst6 \
@@ -134,7 +131,17 @@ ARG CLAUDE_CODE_VERSION=2.1.278
 RUN npm install -g \
       "@openai/codex@${CODEX_VERSION}" \
       "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+# npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
+# writable layer and so is thrown away on every redeploy. /root/.cache is a
+# volume, so point npm at it -- but via npmrc rather than NPM_CONFIG_CACHE,
+# because sshd builds a fresh environment per session and container ENV never
+# reaches an SSH login (the same reason entrypoint.sh writes /root/.zshenv).
+# The clean runs first and against the *default* cache, so the build's own
+# tarballs are dropped instead of being baked under the volume's mount path,
+# where Docker would seed them into the empty volume on first deploy.
+    && npm cache clean --force \
+    && npm config set cache /root/.cache/npm --global
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo

@@ -31,13 +31,20 @@
 | `*-dotconfig` | `/root/.config` | App configs (gh, starship, etc.) |
 | `*-codex` | `/root/.codex` | Codex CLI auth and settings |
 | `*-dev` | `/root/dev` | Development projects |
-| `*-cache` | `/root/.cache` | Regenerable-but-expensive caches: npm (`NPM_CONFIG_CACHE` points here), JetBrains IDE backend and project indexes |
+| `*-cache` | `/root/.cache` | Regenerable-but-expensive caches: npm (pointed here by the image's global npmrc), JetBrains IDE backend and project indexes |
+| `*-localshare` | `/root/.local/share` | JetBrains backend plugins and per-project data |
 
 Size the cache volume with headroom — a JetBrains backend is ~1.5 GB before
 indexes. Nothing in it is worth backing up, but a *full* volume fails at write
 time in the middle of work, which is worse than a cold cache. Caches also no
 longer reset on redeploy, so a corrupt one has to be cleared by hand with
 `rm -rf /root/.cache/<subdir>`.
+
+`/root/.local/share` is a separate volume because JetBrains splits its state
+three ways: settings land in `/root/.config`, the backend and its indexes in
+`/root/.cache`, and installed plugins in `/root/.local/share`. Without the third
+one, plugins disappear on redeploy while everything around them survives, which
+reads as the IDE randomly breaking rather than as a missing volume.
 
 ## Healthcheck
 
@@ -66,12 +73,19 @@ ssh-keygen -R '[46.224.159.50]:2222'
 1024 descriptors is fine for shell sessions but not for a JetBrains backend,
 which opens far more than that while indexing.
 
+This field is not part of the image, so recreating the app in the Coolify UI
+drops it and nothing fails visibly — the container is healthy and indexing dies
+with EMFILE. The entrypoint prints `nofile limit: <n>` at boot, so check the
+container log after a redeploy: anything below 4096 and the options above were
+not applied.
+
 ## Remote IDE (JetBrains)
 
 Connecting WebStorm over SSH is not a terminal session with a file browser: the
 backend is a full IDE running on the box, and the local client is close to a
-rendering surface. That is why three things here exist — the X/font libraries in
-the `Dockerfile`, the raised `nofile`, and the `/root/.cache` volume.
+rendering surface. That is why four things here exist — the X/font libraries in
+the `Dockerfile`, the raised `nofile`, and the `/root/.cache` and
+`/root/.local/share` volumes.
 
 Two limits live on the Hetzner host rather than in the container, so they can't
 be fixed from this repo:
