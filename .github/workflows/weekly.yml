@@ -14,17 +14,23 @@ permissions:
 
 jobs:
   rebuild:
-    name: Rebuild from scratch & test
-    runs-on: ubuntu-latest
+    name: Rebuild from scratch & test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
       contents: read
-      # The scan below files what it finds as an issue. Nothing else in this
-      # workflow writes anything.
-      issues: write
+    strategy:
+      # Each architecture resolves its own fetches and carries its own apt
+      # package set, so one of them going stale says nothing about the other.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     env:
-      IMAGE: remote-claude-code:weekly
-      SCAN_LABEL: weekly-scan
+      IMAGE: remote-claude-code:weekly-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
 
@@ -45,7 +51,7 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE }}
           # CI gates on CRITICAL; this is where the full HIGH picture against a
-          # fresh vuln DB gets looked at. It does not fail the job -- the step
+          # fresh vuln DB gets looked at. It does not fail the job -- the job
           # below turns the findings into something that arrives instead.
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -53,28 +59,91 @@ jobs:
           format: json
           output: trivy.json
 
-      # A table printed into the log of a scheduled job is a table nobody
-      # reads: the run goes green and a newly-fixable HIGH sits there
-      # indefinitely, which makes CI's "HIGH is reported by the weekly rebuild
-      # instead" untrue in the way that matters. So: one issue, edited in place
-      # while findings remain and closed when they are gone. The Security tab
-      # would be the natural home, but code scanning needs Advanced Security on
-      # a private repo.
+      # Handed to the report job rather than filed here: two matrix legs both
+      # editing one issue race each other, and the loser's body -- listing only
+      # its own architecture -- is what survives.
+      - name: Hand the findings to the report job
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.arch }}
+          path: trivy.json
+          if-no-files-found: error
+
+  # A table printed into the log of a scheduled job is a table nobody reads:
+  # the run goes green and a newly-fixable HIGH sits there indefinitely, which
+  # makes CI's "HIGH is reported by the weekly rebuild instead" untrue in the
+  # way that matters. So: one issue, edited in place while findings remain and
+  # closed when they are gone. The Security tab would be the natural home, but
+  # code scanning needs Advanced Security on a private repo.
+  #
+  # One job for both architectures, because one issue is the point -- two
+  # rows for the same CVE with different fixed-in versions is a real thing
+  # worth seeing side by side, and two issues fighting over one label is not.
+  report:
+    name: File the fixable findings
+    needs: rebuild
+    # Even when an architecture failed to rebuild: whatever the other one found
+    # is still worth filing, and the guards below refuse to call the image
+    # clean on the strength of a scan that never ran.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Filing the findings is the only write anything in this workflow does.
+      issues: write
+    env:
+      SCAN_LABEL: weekly-scan
+    steps:
+      - name: Collect every architecture's scan
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trivy-*
+          path: scans
+
       - name: File the fixable findings
         env:
+          # gh resolves the repo from the checkout it is run in; there is no
+          # checkout here, so name it explicitly rather than cloning the repo
+          # to tell gh something it already knows.
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REBUILD_RESULT: ${{ needs.rebuild.result }}
           TITLE: 'Weekly scan: fixable HIGH/CRITICAL findings in the image'
         run: |
           set -euo pipefail
+          shopt -s nullglob
 
-          count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy.json)"
+          scans=(scans/trivy-*/trivy.json)
+          if [ ${#scans[@]} -eq 0 ]; then
+            echo "every rebuild leg failed before it scanned anything" >&2
+            exit 1
+          fi
+
+          # Each finding carries the architecture it was found on, so the table
+          # can say whether something is the image's problem or one arch's.
+          for f in "${scans[@]}"; do
+            arch="${f#scans/trivy-}"
+            arch="${arch%/trivy.json}"
+            jq --arg arch "$arch" \
+              '[.Results[]?.Vulnerabilities[]? | . + {arch: $arch}]' "$f"
+          done | jq -s 'add // []' > findings.json
+
+          count="$(jq 'length' findings.json)"
           gh label create "$SCAN_LABEL" --force --color ededed \
             --description 'Opened by the weekly rebuild; closes itself when the image is clean.'
           existing="$(gh issue list --state open --label "$SCAN_LABEL" \
             --json number --jq '.[0].number // empty')"
 
           if [ "$count" -eq 0 ]; then
-            echo "no fixable HIGH or CRITICAL findings"
+            echo "no fixable HIGH or CRITICAL findings in ${#scans[@]} scan(s)"
+            # A leg that died before scanning cannot vouch for its own
+            # architecture, and closing on a partial sweep is how a finding
+            # gets declared fixed by a build that never looked at it.
+            if [ "$REBUILD_RESULT" != success ]; then
+              echo "but a rebuild leg failed -- leaving any open issue alone"
+              exit 0
+            fi
             if [ -n "$existing" ]; then
               gh issue close "$existing" --comment "Clean as of $(date -u +%Y-%m-%d)."
             fi
@@ -83,13 +152,16 @@ jobs:
 
           {
             echo "$count fixable finding(s) as of the $(date -u +%Y-%m-%d) rebuild."
+            if [ "$REBUILD_RESULT" != success ]; then
+              echo
+              echo "**Partial sweep** -- a rebuild leg failed, so an architecture may be missing below."
+            fi
             echo
-            echo '| Severity | Package | Installed | Fixed in | ID |'
-            echo '| --- | --- | --- | --- | --- |'
-            jq -r '[.Results[]?.Vulnerabilities[]?]
-                   | sort_by(.Severity, .PkgName)[]
-                   | "| \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "-") | [\(.VulnerabilityID)](\(.PrimaryURL // "https://nvd.nist.gov/"))|"' \
-              trivy.json
+            echo '| Arch | Severity | Package | Installed | Fixed in | ID |'
+            echo '| --- | --- | --- | --- | --- | --- |'
+            jq -r 'sort_by(.Severity, .arch, .PkgName)[]
+                   | "| \(.arch) | \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "-") | [\(.VulnerabilityID)](\(.PrimaryURL // "https://nvd.nist.gov/"))|"' \
+              findings.json
             echo
             echo "Unfixable findings are filtered out, so everything here is a bump someone can actually make."
             echo

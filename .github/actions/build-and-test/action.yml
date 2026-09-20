@@ -36,7 +36,9 @@ runs:
     - uses: docker/setup-buildx-action@v4
 
     # Built with the Dockerfile's own ARG defaults, so this tests exactly the
-    # pinned versions a deploy would get. linux/amd64 only: see README.
+    # pinned versions a deploy would get. No `platforms:` -- the build takes
+    # the runner's own architecture, which is what makes the caller's matrix a
+    # native build per architecture instead of one runner emulating the other.
     - name: Build image
       uses: docker/build-push-action@v7
       with:
@@ -46,6 +48,19 @@ runs:
         no-cache: ${{ inputs.no-cache }}
         cache-from: ${{ inputs.cache-from }}
         cache-to: ${{ inputs.cache-to }}
+
+    # Which architecture produced this run -- without it a failing log from one
+    # matrix leg is indistinguishable from the other's. Asserted rather than
+    # printed, because the build is native only for as long as nobody adds a
+    # `platforms:` above: the day someone does, the suite would go on passing
+    # while testing the same architecture twice.
+    - name: Image is built for the runner's own architecture
+      shell: bash
+      run: |
+        built="$(docker image inspect --format '{{.Architecture}}' "${{ inputs.image }}")"
+        runner="$(dpkg --print-architecture)"
+        echo "image: $built | runner: $runner"
+        [ "$built" = "$runner" ]
 
     - name: Install bats
       shell: bash

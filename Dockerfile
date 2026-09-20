@@ -12,6 +12,18 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
 
+# Set by BuildKit from the platform being built for, and the single source of
+# architecture in this file. It used to be discovered at runtime in two
+# spellings -- `dpkg --print-architecture` for the apt repo and fzf, `uname -m`
+# for git-spice and herdr -- which line up with what those four upstreams
+# publish on exactly the two architectures this image supports, and on nothing
+# else. Build for armv7 and dpkg says `armhf` while fzf publishes `armv7`:
+# every URL 404s, and `curl | tar` turns that into an install that is simply
+# empty. So the supported set is named here instead, and each RUN that wants
+# the uname spelling maps it explicitly and exits non-zero on anything it does
+# not recognise.
+ARG TARGETARCH
+
 # `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
 # skipped apt-get update and ran the install against empty package lists. It is
 # latent only because node:*-slim purges wget in its own build; the day the base
@@ -20,12 +32,12 @@ ENV LANG=C.UTF-8
 # The marker has to stay on the line directly above the RUN: check-pins reads
 # exactly one comment line back.
 # pin-check: ignore - a signing key, not a versioned artifact
-RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y wget; fi \
+RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y --no-install-recommends wget ca-certificates; fi \
     && mkdir -p /etc/apt/keyrings \
     && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    && echo "deb [arch=${TARGETARCH} signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
 # openssh-server's postinst generates host keys during the install below.
@@ -34,8 +46,30 @@ RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y w
 # them -- it only creates key types that are missing. Removing them here
 # means each deployment generates its own on first boot, which is what the
 # entrypoint already claims to do.
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends, so every package below is here because something
+# names it. Five of them were arriving as recommends and are now explicit.
+#
+# ca-certificates is the one that breaks the build rather than the box. The
+# base image carries none; wget and curl recommend it, so it used to arrive
+# with them. Without it every https fetch here -- the gh keyring, fzf,
+# starship, git-spice, herdr, npm -- fails verification, and wget exits 5
+# before the first RUN is done.
+#
+# The other four fail quietly instead, which is the worse way to find out:
+# `less` is git's pager, `ncurses-term` carries the screen/tmux terminfo
+# entries that ncurses-base leaves out, `gnupg` is what git-crypt and signed
+# commits need, and fonts-dejavu-core is what the JetBrains backend rasterizes
+# its UI with -- a backend with no fonts starts and then draws nothing legible.
+#
+# Deliberately not re-added: openssh-server's `xauth`, since X11 forwarding is
+# off, and its `default-logind`, which has no place in a container.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
+    ca-certificates \
+    less \
+    ncurses-term \
+    gnupg \
+    patch \
     git \
     git-crypt \
     tmux \
@@ -67,6 +101,7 @@ RUN apt-get update && apt-get install -y \
     libxi6 \
     libfreetype6 \
     libfontconfig1 \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
     && rm -f /etc/ssh/ssh_host_* \
@@ -98,7 +133,7 @@ RUN mkdir -p /root/.omz-git \
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.4
-RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_$(dpkg --print-architecture).tar.gz" \
+RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin
 
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
@@ -109,14 +144,27 @@ RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
 ARG GIT_SPICE_VERSION=0.31.2
-RUN curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-$(uname -m).tar.gz" \
+# git-spice and herdr both name their assets with the uname spelling
+# (x86_64/aarch64) rather than the Docker one, hence the mapping. Anything
+# unmapped is a hard error here rather than a 404 three commands later.
+RUN case "${TARGETARCH}" in \
+      amd64) uarch=x86_64 ;; \
+      arm64) uarch=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}' (BuildKit sets this; a legacy builder does not)" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-${uarch}.tar.gz" \
       | tar -xz -C /usr/local/bin git-spice \
     && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs
 
 # herdr is pre-1.0 and ships stable releases weekly.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
 ARG HERDR_VERSION=0.9.1
-RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-$(uname -m)" \
+RUN case "${TARGETARCH}" in \
+      amd64) uarch=x86_64 ;; \
+      arm64) uarch=aarch64 ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${uarch}" \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
@@ -143,7 +191,27 @@ RUN npm install -g \
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
-RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Replaces `sed -i 's/#PasswordAuthentication yes/...' sshd_config`, which
+# edited a *commented* line and so no-opped into a box with password auth on
+# the day Debian reworded it. See the header in the file itself.
+COPY sshd_config.d/99-remote-claude.conf /etc/ssh/sshd_config.d/99-remote-claude.conf
+# A hardening file that is silently not read is worse than no hardening file,
+# so assert the end state rather than the mechanism: `sshd -T` prints the
+# config as sshd has actually merged it. It prints sshd's own spelling, not
+# the file's -- prohibit-password comes back as its older synonym
+# without-password -- hence the alternation rather than a literal match. It refuses to run without host keys,
+# hence the keygen -- and the rm in the same layer, so none are baked into the
+# image (tests/image.bats asserts that separately).
+RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
+    && ssh-keygen -A >/dev/null \
+    && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
+    && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
+                 'permitrootlogin (without-password|prohibit-password)' \
+                 'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300'; do \
+         grep -qE "^${kv}$" /tmp/sshd-effective.conf \
+           || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
+       done \
+    && rm -f /tmp/sshd-effective.conf /etc/ssh/ssh_host_*
 
 COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h
@@ -173,4 +241,13 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 22
+
+# sshd is the last thing the entrypoint execs, so "sshd is running" means the
+# whole entrypoint ran -- the same signal the test suite waits on. Shipped in
+# the image because it previously existed only as a field in coolify.md, which
+# left every other deployment (Compose, Kubernetes, a bare `docker run`) with
+# no health signal at all.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["pgrep", "-x", "sshd"]
+
 CMD ["/usr/local/bin/entrypoint.sh"]
