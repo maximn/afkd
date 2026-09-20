@@ -65,6 +65,21 @@ RUN apt-get update && apt-get install -y \
 # apt packages are deliberately not pinned: Debian drops old versions from the
 # archive, so a pinned apt version breaks the build the day it rolls.
 
+# The g* shortcuts (gst, gl, gd, gcb, gwip, ...) are oh-my-zsh git plugin
+# aliases, not zsh builtins, so the plugin is what keeps this box in sync with
+# the local machine. Only two of that repo's files are needed - the plugin,
+# plus git_current_branch out of lib/git.zsh - so they are vendored rather than
+# run through the installer, which tracks master and would change the shell
+# between rebuilds instead of between commits. oh-my-zsh ships no tags, so the
+# pin is a commit and Renovate bumps the digest.
+# renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
+ARG OMZ_REF=0b50afdbfd8cbd0e03be68ecec4e1b5d3f55ef0a
+RUN mkdir -p /root/.omz-git \
+    && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
+         -o /root/.omz-git/lib-git.zsh \
+    && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/plugins/git/git.plugin.zsh" \
+         -o /root/.omz-git/git.plugin.zsh
+
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.4
 RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_$(dpkg --print-architecture).tar.gz" \
@@ -114,10 +129,22 @@ COPY bin/ch /usr/local/bin/ch
 RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/cc /usr/local/bin/ch
 
 COPY git-aliases.zsh /root/.git-aliases.zsh
-RUN echo 'eval "$(starship init zsh)"' >> /root/.zshrc \
-    && echo 'source <(fzf --zsh)' >> /root/.zshrc \
-    && echo 'source /root/.git-aliases.zsh' >> /root/.zshrc \
-    && echo 'cd ~/dev 2>/dev/null' >> /root/.zshrc
+RUN cat > /root/.zshrc <<'ZSHRC'
+# The git plugin registers completions with compdef, so compinit runs first.
+autoload -Uz compinit && compinit -d /root/.zcompdump
+
+source /root/.omz-git/lib-git.zsh
+source /root/.omz-git/git.plugin.zsh
+
+# After the plugin, so the personal overrides win.
+source /root/.git-aliases.zsh
+
+eval "$(starship init zsh)"
+source <(fzf --zsh)
+eval "$(gs shell completion zsh)"
+
+cd ~/dev 2>/dev/null
+ZSHRC
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
