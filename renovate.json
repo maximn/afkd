@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
   "customManagers": [
     {
@@ -62,6 +63,36 @@
         "minor"
       ],
       "automerge": false
+    },
+    {
+      "description": "Action digests, grouped and scheduled like the image toolchain. Eleven actions arriving as eleven unscheduled PRs is how a pinning policy stops being read.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "schedule": [
+        "before 6am on monday"
+      ]
+    },
+    {
+      "description": "No automerge for actions. A digest that moved underneath a tag is the supply-chain event hash-pinning exists to surface - merging it unread is the one update type where automerge defeats its own purpose.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "The one-shot pin is not a routine bump and should not wait for the weekly window - until it lands, CI's unpinned-uses gate has nothing to pass against.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "pin",
+        "pinDigest"
+      ],
+      "schedule": [
+        "at any time"
+      ]
     }
   ]
 }
