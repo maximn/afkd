@@ -61,7 +61,7 @@ reads as the IDE randomly breaking rather than as a missing volume.
 
 SSH host keys are persisted in the `/root/.config` volume. After a fresh setup, accept the key once. If you ever recreate the volumes, clear the old key locally:
 ```
-ssh-keygen -R '[46.224.159.50]:2222'
+ssh-keygen -R '[<server-ip>]:2222'
 ```
 
 ## Custom Docker Options
