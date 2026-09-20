@@ -289,6 +289,116 @@ assert_github_key_usable() {
   # The merge must not clobber what was already there.
   run in_box jq -e '.permissions.defaultMode' /root/.claude/settings.json
   [ "$status" -eq 0 ]
+
+  # This file now holds a bearer token. authorized_keys, github_ed25519 and
+  # .zshenv have all had a mode assertion since the day they were written; the
+  # one file holding a token was the only one without, and it was 0644.
+  run in_box stat -c '%a' /root/.claude/settings.json
+  [ "$output" = "600" ]
+}
+
+@test "locks down settings.json even with no notification hooks" {
+  # The umask at creation, rather than the chmod after the merge.
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box stat -c '%a' /root/.claude/settings.json
+  [ "$output" = "600" ]
+}
+
+@test "relocks a settings.json restored from a volume written by an older image" {
+  # Volumes outlive images. A box redeployed onto this version has to repair
+  # the 0644 file its predecessor left in /root/.claude, not just get the mode
+  # right on the files it creates itself.
+  local vol
+  vol="$(make_volume)"
+  docker run --rm --label "${LABEL}=1" -v "${vol}:/root/.claude" \
+    --entrypoint sh "$IMAGE" -c \
+    'echo "{}" > /root/.claude/settings.json; chmod 644 /root/.claude/settings.json'
+
+  start_box -v "${vol}:/root/.claude" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box stat -c '%a' /root/.claude/settings.json
+  [ "$output" = "600" ]
+}
+
+# --- hook command quoting ----------------------------------------------------
+#
+# The two hook commands are strings Claude Code hands to a shell. NTFY_TOKEN
+# and NTFY_URL used to be spliced into hand-written quotes -- the token into
+# "..." and the URL into '...' -- so a backtick, a $(...) or the matching quote
+# broke out and ran as the agent. Every payload below did exactly that before
+# the values were shell-quoted with %q.
+#
+# Asserting on the command string alone is not enough: one that reads fine can
+# still be cutting a token in half. Swapping curl for a stub that prints its
+# argv shows what the hook would actually send.
+hook_argv() {
+  docker exec -i "$BOX" bash -s -- "$1" <<'STUB'
+mkdir -p /tmp/stub
+cat > /tmp/stub/curl <<'CURL'
+#!/bin/bash
+printf 'ARG[%s]\n' "$@"
+CURL
+chmod +x /tmp/stub/curl
+PATH=/tmp/stub:$PATH bash -c "$1"
+STUB
+}
+
+stop_hook_command() {
+  in_box jq -re '.hooks.Stop[0].hooks[0].command' /root/.claude/settings.json
+}
+
+# The payloads write a file rather than echo a word: the word would also
+# appear in the output as part of the token itself, so only a side effect
+# distinguishes "carried through as data" from "ran".
+# Takes the argv dump, because `run` below overwrites $output.
+assert_not_injected() {
+  # `id` in the payload would have substituted a uid line into the header.
+  [[ "$1" != *"uid="* ]]
+
+  run in_box test -e /tmp/pwned
+  [ "$status" -ne 0 ]
+}
+
+@test "a token full of shell metacharacters cannot escape the hook command" {
+  local nasty='tk`touch /tmp/pwned`$(touch /tmp/pwned)"; touch /tmp/pwned; id;'
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+    -e NTFY_URL=https://ntfy.example.com/claude -e NTFY_TOKEN="$nasty"
+  wait_ready
+
+  local cmd
+  cmd="$(stop_hook_command)"
+
+  # Still a command a shell will accept...
+  run in_box bash -n -c "$cmd"
+  [ "$status" -eq 0 ]
+
+  # ...and the token arrives in curl's argv whole, not split at the quote.
+  run hook_argv "$cmd"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Authorization: Bearer ${nasty}]"* ]]
+
+  assert_not_injected "$output"
+}
+
+@test "a url full of shell metacharacters cannot escape the hook command" {
+  local nasty="https://ntfy.example.com/claude'; touch /tmp/pwned; id;#"
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e NTFY_URL="$nasty"
+  wait_ready
+
+  local cmd
+  cmd="$(stop_hook_command)"
+
+  run in_box bash -n -c "$cmd"
+  [ "$status" -eq 0 ]
+
+  run hook_argv "$cmd"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[${nasty}]"* ]]
+
+  assert_not_injected "$output"
 }
 
 @test "never overwrites a settings.json from a persisted volume" {

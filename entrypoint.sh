@@ -125,9 +125,13 @@ fi
 )
 chmod 600 /root/.zshenv
 
-# Claude Code default settings
+# Claude Code default settings. Written under a umask, like the two secret
+# files above, because the notification hooks merged in below put an ntfy
+# bearer token into this same file -- a plain redirect creates it 0644 and
+# leaves it that way for as long as it takes to reach the chmod.
 if [ ! -f /root/.claude/settings.json ]; then
-  cat > /root/.claude/settings.json <<'SETTINGS'
+  (umask 077
+   cat > /root/.claude/settings.json <<'SETTINGS'
 {
   "permissions": {
     "allow": ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "WebSearch"],
@@ -137,30 +141,59 @@ if [ ! -f /root/.claude/settings.json ]; then
   "alwaysThinkingEnabled": true
 }
 SETTINGS
+  )
 fi
 
 # Agent lifecycle notifications. Merged on every boot rather than seeded once,
 # so the wiring stays declarative and follows NTFY_URL changes. This is what
 # lets a detached session page a phone instead of needing someone attached.
-if [ -n "${NTFY_URL}" ]; then
+#
+# These two strings are commands Claude Code hands to a shell, so the URL and
+# the token are shell-quoted with %q before being spliced in. They used to be
+# wrapped in hand-written quotes -- the token in "..." and the URL in '...' --
+# which holds only until a value contains the matching quote or, for the
+# double-quoted one, anything the shell expands. All four of these ran as the
+# agent's own user when the hook fired -- the first two without even needing a
+# quote, since the shell expands those inside "...":
+#
+#   NTFY_TOKEN   tk`cmd`   |   tk$(cmd)   |   tk"; cmd;
+#   NTFY_URL     https://host/topic'; cmd;
+#
+# jq's --arg does the JSON quoting, which is a different layer and never
+# covered any of this.
+if [ -n "${NTFY_URL:-}" ]; then
+  printf -v ntfy_url_q '%q' "${NTFY_URL}"
   ntfy_auth=""
-  if [ -n "${NTFY_TOKEN}" ]; then
-    ntfy_auth="-H \"Authorization: Bearer ${NTFY_TOKEN}\""
+  if [ -n "${NTFY_TOKEN:-}" ]; then
+    printf -v ntfy_header_q '%q' "Authorization: Bearer ${NTFY_TOKEN}"
+    ntfy_auth="-H ${ntfy_header_q} "
   fi
-  needs_you="jq -r '.message // \"needs attention\"' | curl -s ${ntfy_auth} -H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- '${NTFY_URL}'"
-  finished="curl -s ${ntfy_auth} -H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' '${NTFY_URL}'"
+  needs_you="jq -r '.message // \"needs attention\"' | curl -s ${ntfy_auth}-H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
+  finished="curl -s ${ntfy_auth}-H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
 
   # A notification-config failure must never stop sshd from coming up.
-  if jq --arg needs_you "${needs_you}" --arg finished "${finished}" \
-       '.hooks.Notification = [{"hooks":[{"type":"command","command":$needs_you}]}]
-        | .hooks.Stop       = [{"hooks":[{"type":"command","command":$finished}]}]' \
-       /root/.claude/settings.json > /tmp/settings.json 2>/dev/null; then
-    mv /tmp/settings.json /root/.claude/settings.json
+  #
+  # The scratch file sits next to the target rather than in /tmp. /root/.claude
+  # is a volume, so /tmp is a different filesystem: `mv` across it is a copy
+  # that both loses atomicity and carries /tmp's mode onto a file holding a
+  # bearer token. Same directory, same umask, real rename.
+  if (umask 077
+      jq --arg needs_you "${needs_you}" --arg finished "${finished}" \
+         '.hooks.Notification = [{"hooks":[{"type":"command","command":$needs_you}]}]
+          | .hooks.Stop       = [{"hooks":[{"type":"command","command":$finished}]}]' \
+         /root/.claude/settings.json > /root/.claude/settings.json.tmp) 2>/dev/null; then
+    mv /root/.claude/settings.json.tmp /root/.claude/settings.json
   else
     echo "warning: could not merge notification hooks into settings.json" >&2
-    rm -f /tmp/settings.json
+    rm -f /root/.claude/settings.json.tmp
   fi
 fi
+
+# Unconditional, and after the merge rather than at creation: this file holds
+# the ntfy token, and one restored from a volume written by an older image is
+# still 0644. The other three secret files have had a mode assertion in the
+# suite since they were written; this one now does too.
+chmod 600 /root/.claude/settings.json
 
 # nofile is raised through Coolify's Custom Docker Options, a hand-pasted field
 # that is lost whenever the app is recreated. A JetBrains backend then hits
