@@ -143,9 +143,30 @@ dockerfile_arg() {
   [ "$status" -eq 0 ]
 }
 
-@test "disables ssh password authentication" {
-  run in_box grep -qE '^PasswordAuthentication no' /etc/ssh/sshd_config
+# Was a grep for `^PasswordAuthentication no` in /etc/ssh/sshd_config, which
+# asserted the *mechanism* -- that a particular sed had rewritten a particular
+# line. `sshd -T` prints the configuration as sshd has actually merged it,
+# drop-in included, so this keeps holding however the setting gets there and
+# stops holding the moment sshd disagrees. The Dockerfile runs the same check
+# at build time; this one proves it survived into a booted container, where
+# /etc/ssh has since been written over with the persisted host keys.
+@test "sshd runs with the hardening drop-in in effect" {
+  run in_box /usr/sbin/sshd -T
   [ "$status" -eq 0 ]
+
+  # Regexes, not literals: sshd -T answers in its own spelling, and
+  # prohibit-password comes back as the older synonym without-password.
+  local kv
+  for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
+    'permitemptypasswords no' \
+    'permitrootlogin (without-password|prohibit-password)' \
+    'x11forwarding no' 'maxauthtries 4' \
+    'clientaliveinterval 300' 'clientalivecountmax 2'; do
+    grep -qE "^${kv}$" <<<"$output" || {
+      echo "not in effect: $kv"
+      false
+    }
+  done
 }
 
 # Trivy caught these baked into the image: openssh-server's postinst generates
@@ -156,4 +177,16 @@ dockerfile_arg() {
   run docker run --rm "$IMAGE" sh -c 'ls /etc/ssh/ssh_host_* 2>/dev/null | wc -l'
   [ "$status" -eq 0 ]
   [ "${output//[[:space:]]/}" = "0" ]
+}
+
+# The healthcheck lived only as a field in coolify.md, so every deployment that
+# was not Coolify had none -- and a box whose entrypoint died before `exec
+# sshd` looked no different from a healthy one. Docker starts probing one
+# interval in, so this is normally already green by the time it is asked: the
+# file shares a box and this test runs last.
+@test "reports itself healthy once sshd is up" {
+  run docker inspect -f '{{if .Config.Healthcheck}}yes{{end}}' "$IMAGE"
+  [ "$output" = "yes" ]
+
+  wait_healthy
 }

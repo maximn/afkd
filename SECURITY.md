@@ -15,17 +15,24 @@ credentials belong to.
 
 Design decisions that follow from that:
 
-- **Key-based SSH only.** `PasswordAuthentication` is disabled in the image, and
-  the entrypoint refuses to boot with an empty `SSH_PUBLIC_KEYS` rather than
-  come up unreachable.
+- **Key-based SSH only.** `sshd_config.d/99-remote-claude.conf` turns off
+  password and keyboard-interactive authentication and restricts root to
+  `prohibit-password`, and the build fails unless `sshd -T` confirms every one
+  of those took effect. The entrypoint refuses to boot with an empty
+  `SSH_PUBLIC_KEYS` rather than come up unreachable.
 - **Secrets are injected as environment variables**, never baked into the image
-  or committed. `.zshenv` and any private key material are written `0600`, and
-  the key is written under a `umask` so it is never briefly world-readable.
-- **The container runs as root** and is expected to be given `SYS_ADMIN` and
-  `/dev/fuse` for its tooling. It is not a sandbox: anyone who can log in has
-  full control of the container. Don't expose port 22 to the internet without a
-  firewall, and don't share a box with people you wouldn't hand those
-  credentials to.
+  or committed. `.zshenv`, `settings.json` and any private key material are
+  written `0600`, each under a `umask` so it is never briefly world-readable,
+  and values interpolated into the agent's notification hooks are shell-quoted
+  rather than wrapped in hand-written quotes.
+- **The container runs as root, with no added capabilities.** It used to be
+  given `SYS_ADMIN`, `/dev/fuse` and `apparmor:unconfined`; those were for the
+  Browserless/Playwright wiring the image no longer installs, and a capability
+  nothing uses only widens what a compromise reaches. The only Docker option
+  the image still wants is a raised `nofile`, which is a limit rather than a
+  privilege. It is still not a sandbox: anyone who can log in has full control
+  of the container. Don't expose port 22 to the internet without a firewall,
+  and don't share a box with people you wouldn't hand those credentials to.
 - **Agent permissions** are seeded in `/root/.claude/settings.json` with a small
   deny list. That is a convenience, not a security boundary.
 

@@ -45,7 +45,9 @@ docker run -d -p 2222:22 \
 
 `SSH_PUBLIC_KEYS` is required and the entrypoint refuses to start without it:
 password auth is disabled, so no keys would mean a container that passes its
-healthcheck while being impossible to log into.
+healthcheck while being impossible to log into. The image carries that
+healthcheck itself (`pgrep -x sshd`), so a host that reads one from the image
+gets it with no configuration.
 
 ## Connect
 
@@ -97,9 +99,16 @@ zsh, which shellcheck can't parse), and `hadolint` for the Dockerfile.
 
 ### Platform
 
-`linux/amd64` only for now. The release downloads derive their architecture at
-build time, but no arm64 build has been verified — notably that every upstream
-publishes an arm64 asset under the name the Dockerfile constructs.
+`linux/amd64` and `linux/arm64`. CI builds and runs the full suite on both, on
+a native runner each rather than one emulating the other.
+
+Architecture comes from BuildKit's `TARGETARCH` and nothing else. It used to be
+discovered at runtime in two spellings — `dpkg --print-architecture` for the
+apt repo and fzf, `uname -m` for git-spice and herdr — which agree with what
+those upstreams publish on these two architectures and on nothing else. The two
+that name their assets `x86_64`/`aarch64` now get an explicit mapping, and an
+architecture outside it fails the build instead of 404ing into an empty
+install.
 
 ## License
 

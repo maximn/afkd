@@ -51,14 +51,12 @@ reads as the IDE randomly breaking rather than as a missing volume.
 
 ## Healthcheck
 
-| Setting | Value |
-|---|---|
-| Type | CMD |
-| Command | `pgrep sshd` |
-| Interval | 30s |
-| Timeout | 30s |
-| Retries | 3 |
-| Start Period | 30s |
+Nothing to configure — the image ships its own `HEALTHCHECK` (`pgrep -x sshd`,
+every 30s after a 30s grace period), so Coolify picks it up from the image and
+so does anything else that runs the container. It used to exist only here, as
+four fields to paste into the Coolify UI, which left a Compose or Kubernetes
+deployment with no health signal at all -- and a box whose entrypoint died
+before `exec sshd` looking no different from a working one.
 
 ## Notes
 
@@ -70,11 +68,17 @@ ssh-keygen -R '[<server-ip>]:2222'
 ## Custom Docker Options
 
 ```
---cap-add SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined --ulimit nofile=65536:65536
+--ulimit nofile=65536:65536
 ```
 
 1024 descriptors is fine for shell sessions but not for a JetBrains backend,
 which opens far more than that while indexing.
+
+This line also used to carry `--cap-add SYS_ADMIN --device=/dev/fuse
+--security-opt apparmor:unconfined`. Those were for the Browserless/Playwright
+wiring the image no longer installs; nothing left in it needs them, and they
+were handing every logged-in session more of the host than the box has any use
+for. Drop them from an existing deployment.
 
 This field is not part of the image, so recreating the app in the Coolify UI
 drops it and nothing fails visibly — the container is healthy and indexing dies
