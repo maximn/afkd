@@ -16,6 +16,10 @@ ENV LANG=C.UTF-8
 # skipped apt-get update and ran the install against empty package lists. It is
 # latent only because node:*-slim purges wget in its own build; the day the base
 # image keeps it -- a Renovate bump away -- the short circuit goes live.
+#
+# The marker has to stay on the line directly above the RUN: check-pins reads
+# exactly one comment line back.
+# pin-check: ignore - a signing key, not a versioned artifact
 RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y wget; fi \
     && mkdir -p /etc/apt/keyrings \
     && chmod 755 /etc/apt/keyrings \
