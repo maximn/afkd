@@ -29,9 +29,23 @@ fi
 printf '%s\n' "${SSH_PUBLIC_KEYS}" > /root/.ssh/authorized_keys
 chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
 
-# Git config
-git config --global user.name "${GIT_USER_NAME:-Novak}"
-git config --global user.email "${GIT_USER_EMAIL:-your@email.com}"
+# Git identity. Deliberately no fallback: these used to default to the name and
+# email of this repo's author, so every deployment but one committed under an
+# identity that had never touched the code -- silently, which is how a wrong
+# author ends up in history and stays there. Unset is the better failure:
+# git refuses to commit and prints exactly what to set.
+#
+# Warned about at boot rather than exited on, because it costs you a commit,
+# not a way into the box.
+if [ -n "${GIT_USER_NAME}" ]; then
+  git config --global user.name "${GIT_USER_NAME}"
+fi
+if [ -n "${GIT_USER_EMAIL}" ]; then
+  git config --global user.email "${GIT_USER_EMAIL}"
+fi
+if [ -z "${GIT_USER_NAME}" ] || [ -z "${GIT_USER_EMAIL}" ]; then
+  echo "warning: GIT_USER_NAME and/or GIT_USER_EMAIL are unset - git will refuse to commit until you set them." >&2
+fi
 
 # GitHub SSH key (via GITHUB_SSH_KEY env var)
 if [ -n "${GITHUB_SSH_KEY}" ]; then

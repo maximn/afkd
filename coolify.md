@@ -11,9 +11,12 @@
 | Variable | Required | Description |
 |---|---|---|
 | `SSH_PUBLIC_KEYS` | Yes | Multiline — one SSH public key per line (`cat ~/.ssh/id_ed25519.pub`) |
-| `GIT_USER_NAME` | No | Git author name (default: Novak) |
-| `GIT_USER_EMAIL` | No | Git author email |
-| `GITHUB_SSH_KEY` | No | **Base64-encoded** private SSH key for GitHub access. Generate with `base64 < ~/.ssh/remote-claude \| tr -d '\n'`. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
+| `GIT_USER_NAME` | Recommended | Git author name. No default — unset means git refuses to commit until you set it on the box |
+| `GIT_USER_EMAIL` | Recommended | Git author email. Same as above |
+| `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access, either a raw PEM key or base64-encoded (`base64 < ~/.ssh/remote-claude \| tr -d '\n'`) — the entrypoint detects which. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
+
+`.env.example` at the repo root lists every variable the image reads, including
+the agent credentials and the optional ntfy notifications not shown here.
 
 ## Ports
 
