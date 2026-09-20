@@ -82,13 +82,18 @@ fi
 # with %q rather than by line-parsing `env` -- one unquoted value would
 # otherwise corrupt itself and every export after it. bash's %q output is
 # valid zsh, including the $'...' form it uses for newlines.
-{
+#
+# Written under a umask like the GitHub key above: this file holds GH_TOKEN and
+# every agent API key, and a plain redirect creates it 0644 and leaves it that
+# way until the chmod. The chmod stays for the case where the file already
+# exists, since a redirect truncates it without touching its mode.
+(umask 077
   for name in GH_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY \
               "${!CODEX_@}" "${!CLAUDE_@}"; do
     [ -n "${!name+x}" ] || continue
     printf 'export %s=%q\n' "$name" "${!name}"
-  done
-} > /root/.zshenv
+  done > /root/.zshenv
+)
 chmod 600 /root/.zshenv
 
 # Claude Code default settings
