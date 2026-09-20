@@ -39,7 +39,12 @@ export function check(src, renovateJson) {
     const start = i
     let text = line
     while (text.trimEnd().endsWith('\\') && i + 1 < lines.length) {
-      text = text.trimEnd().slice(0, -1) + ' ' + lines[++i]
+      const next = lines[++i]
+      // Docker drops comment lines inside a continuation before it parses the
+      // command, so a comment between two escaped lines is not an argument.
+      // Joining it in would read every word of the prose as a package name.
+      if (next.trim().startsWith('#')) continue
+      text = text.trimEnd().slice(0, -1) + ' ' + next
     }
     // The comment directly above the block, if any - carries the ignore marker.
     let above = ''
