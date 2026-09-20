@@ -79,24 +79,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v4
-
-      # Built with the Dockerfile's own ARG defaults, so CI tests exactly the
-      # pinned versions a deploy would get. linux/amd64 only: see README.
-      - name: Build image
-        uses: docker/build-push-action@v7
+      # Shared with the weekly rebuild, which runs the same build and the same
+      # suite with the cache turned off. Kept as a composite action rather than
+      # a reusable workflow so this job's name -- and with it the `Build & test
+      # image` check that Renovate's automerge is gated on -- stays put.
+      - uses: ./.github/actions/build-and-test
         with:
-          context: .
-          load: true
-          tags: ${{ env.IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Install bats
-        run: sudo npm install -g bats@1.13.0
-
-      - name: Run test suite
-        run: bats --print-output-on-failure --timing tests/
+          image: ${{ env.IMAGE }}
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
