@@ -120,17 +120,14 @@ RUN curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VER
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
-# Last of the installs: these three publish most often, so keep the layers
+# Last of the installs: these two publish most often, so keep the layers
 # they invalidate to a minimum.
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.155.1
-# renovate: datasource=npm depName=@playwright/mcp
-ARG PLAYWRIGHT_MCP_VERSION=0.0.82
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.278
 RUN npm install -g \
       "@openai/codex@${CODEX_VERSION}" \
-      "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
 # npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
 # writable layer and so is thrown away on every redeploy. /root/.cache is a
