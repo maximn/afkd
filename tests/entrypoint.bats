@@ -60,6 +60,52 @@ teardown() {
   [ "$output" = "600" ]
 }
 
+# --- git identity ------------------------------------------------------------
+
+@test "sets the git identity from the environment" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+    -e GIT_USER_NAME='Ada Lovelace' -e GIT_USER_EMAIL='ada@example.com'
+  wait_ready
+
+  run in_box git config --global user.name
+  [ "$output" = 'Ada Lovelace' ]
+
+  run in_box git config --global user.email
+  [ "$output" = 'ada@example.com' ]
+}
+
+@test "leaves the git identity unset rather than inventing one" {
+  # These used to fall back to the name and email of this repo's author, so
+  # every other deployment committed under an identity that had never touched
+  # the code. An unset identity makes git say so at commit time; a wrong one
+  # is silent and ends up in history.
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box git config --global user.name
+  [ "$status" -ne 0 ]
+
+  run in_box git config --global user.email
+  [ "$status" -ne 0 ]
+
+  run box_logs
+  [[ "$output" == *"GIT_USER_NAME and/or GIT_USER_EMAIL are unset"* ]]
+}
+
+@test "warns when only half the git identity is set" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GIT_USER_NAME='Ada Lovelace'
+  wait_ready
+
+  run in_box git config --global user.name
+  [ "$output" = 'Ada Lovelace' ]
+
+  run in_box git config --global user.email
+  [ "$status" -ne 0 ]
+
+  run box_logs
+  [[ "$output" == *"GIT_USER_NAME and/or GIT_USER_EMAIL are unset"* ]]
+}
+
 # --- GITHUB_SSH_KEY ----------------------------------------------------------
 #
 # The key must come out usable whichever form Coolify hands it over in. The
