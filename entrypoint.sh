@@ -133,4 +133,20 @@ if [ -n "${NTFY_URL}" ]; then
   fi
 fi
 
+# nofile is raised through Coolify's Custom Docker Options, a hand-pasted field
+# that is lost whenever the app is recreated. A JetBrains backend then hits
+# EMFILE partway through indexing while the healthcheck (sshd is up) stays
+# green, so print the limit actually in effect where the container log shows it.
+fd_limit="$(ulimit -n)"
+case "$fd_limit" in
+  '' | *[!0-9]*) echo "nofile limit: ${fd_limit}" ;;  # "unlimited"
+  *)
+    if [ "$fd_limit" -lt 4096 ]; then
+      echo "warning: nofile limit is ${fd_limit} - too low for a JetBrains backend. Check Custom Docker Options." >&2
+    else
+      echo "nofile limit: ${fd_limit}"
+    fi
+    ;;
+esac
+
 exec /usr/sbin/sshd -D

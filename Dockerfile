@@ -51,6 +51,22 @@ RUN apt-get update && apt-get install -y \
     zsh \
     htop \
     procps \
+# JetBrains remote development runs a full desktop IDE on the box and rasterizes
+# its UI server-side, so the backend's JBR loads libawt_xawt.so and needs the X
+# and font libraries even though nothing here has a display. Without them the
+# backend dies at startup with an UnsatisfiedLinkError and Gateway reports only
+# that it failed to start. ~5 MB; libsecret is deliberately left out because it
+# drags in glib and ICU for 57 MB to back a credential store that falls back to
+# a file. The list names every library the backend loads directly, including
+# the ones another entry already pulls in, so trimming one edge cannot quietly
+# remove a library that is actually needed.
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libfreetype6 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
     && rm -f /etc/ssh/ssh_host_* \
@@ -115,7 +131,17 @@ ARG CLAUDE_CODE_VERSION=2.1.278
 RUN npm install -g \
       "@openai/codex@${CODEX_VERSION}" \
       "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+# npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
+# writable layer and so is thrown away on every redeploy. /root/.cache is a
+# volume, so point npm at it -- but via npmrc rather than NPM_CONFIG_CACHE,
+# because sshd builds a fresh environment per session and container ENV never
+# reaches an SSH login (the same reason entrypoint.sh writes /root/.zshenv).
+# The clean runs first and against the *default* cache, so the build's own
+# tarballs are dropped instead of being baked under the volume's mount path,
+# where Docker would seed them into the empty volume on first deploy.
+    && npm cache clean --force \
+    && npm config set cache /root/.cache/npm --global
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo

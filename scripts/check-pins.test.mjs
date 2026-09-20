@@ -93,5 +93,11 @@ rejects('renovate.json with the customManager removed',
 accepts('a marked-ignore block that downloads without a version',
   (s) => `${s}\n# pin-check: ignore - test fixture\nRUN curl -fsSL https://example.com/x -o /x\n`)
 
+// Docker strips comment lines inside a continuation before parsing, so prose
+// written between two escaped lines is not an argument. The checker joined it
+// in and read every word of the comment as a package name.
+accepts('a comment inside a RUN continuation',
+  (s) => `${s}\nRUN npm install -g \\\n# a note about why, mid-block\n      "pkg@1.0.0"\n`)
+
 console.log(failed === 0 ? '\nall passed' : `\n${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)
