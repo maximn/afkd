@@ -1,0 +1,7 @@
+# The deployment's real values. .env.example is the committed template; the
+# file it gets copied to holds live SSH keys, GH_TOKEN and agent API keys.
+# .dockerignore already keeps these out of the build context -- this is the
+# other half, keeping them out of git.
+.env
+.env.*
+!.env.example

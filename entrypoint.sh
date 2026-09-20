@@ -1,7 +1,15 @@
 #!/bin/bash
 set -e
 
-# Persist SSH host keys across redeployments
+# Every directory this script writes into, created up front. Which of them
+# already exist depends on what the deployment mounts where: /root/.config is a
+# volume in production and absent on a bare `docker run`, and /root/.ssh comes
+# from the image today but would be shadowed by a volume mounted over it. A
+# missing directory turns one of the redirects below into a fatal error under
+# `set -e`, and an entrypoint that dies never reaches `exec sshd`.
+mkdir -p /root/.config /root/.claude /root/.ssh /root/dev
+
+# Persist SSH host keys across redeployments.
 if [ ! -f /root/.config/ssh_host_ed25519_key ]; then
   ssh-keygen -A
   cp /etc/ssh/ssh_host_*_key* /root/.config/
@@ -55,7 +63,12 @@ if [ -n "${GITHUB_SSH_KEY}" ]; then
 fi
 
 if [ "${gh_key_ok:-0}" = "1" ]; then
-  ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
+  # Unguarded this is fatal under `set -e`: ssh-keyscan exits 1 when github.com
+  # does not resolve, which happens on any boot that wins a race with the
+  # network. Losing known_hosts costs you git-over-ssh; aborting here costs you
+  # sshd, and with it every way back into the box.
+  ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null \
+    || echo "warning: could not reach github.com to record its host key; git over ssh may prompt" >&2
   cat > /root/.ssh/config <<'SSHCFG'
 Host github.com
   IdentityFile /root/.ssh/github_ed25519
@@ -69,17 +82,21 @@ fi
 # with %q rather than by line-parsing `env` -- one unquoted value would
 # otherwise corrupt itself and every export after it. bash's %q output is
 # valid zsh, including the $'...' form it uses for newlines.
-{
+#
+# Written under a umask like the GitHub key above: this file holds GH_TOKEN and
+# every agent API key, and a plain redirect creates it 0644 and leaves it that
+# way until the chmod. The chmod stays for the case where the file already
+# exists, since a redirect truncates it without touching its mode.
+(umask 077
   for name in GH_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY \
               "${!CODEX_@}" "${!CLAUDE_@}"; do
     [ -n "${!name+x}" ] || continue
     printf 'export %s=%q\n' "$name" "${!name}"
-  done
-} > /root/.zshenv
+  done > /root/.zshenv
+)
 chmod 600 /root/.zshenv
 
 # Claude Code default settings
-mkdir -p /root/.claude
 if [ ! -f /root/.claude/settings.json ]; then
   cat > /root/.claude/settings.json <<'SETTINGS'
 {
@@ -115,8 +132,5 @@ if [ -n "${NTFY_URL}" ]; then
     rm -f /tmp/settings.json
   fi
 fi
-
-# Ensure ~/dev exists
-mkdir -p /root/dev
 
 exec /usr/sbin/sshd -D
