@@ -1,0 +1,105 @@
+name: Weekly rebuild
+
+# The apt layer is deliberately unpinned (Debian drops old versions from the
+# archive), and the pinned releases below it can be pulled or re-tagged. A
+# scheduled cache-less rebuild finds that on a Monday instead of mid-deploy.
+# It also re-scans the current image against a fresh vulnerability database.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    name: Rebuild from scratch & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # The scan below files what it finds as an issue. Nothing else in this
+      # workflow writes anything.
+      issues: write
+    env:
+      IMAGE: remote-claude-code:weekly
+      SCAN_LABEL: weekly-scan
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same build and the same suite CI runs, with the cache turned off --
+      # the point of the exercise is to prove the pinned fetches still resolve
+      # rather than to replay the layers from when they last did.
+      - uses: ./.github/actions/build-and-test
+        with:
+          image: ${{ env.IMAGE }}
+          # Read nothing and write nothing: a cache-less build must not replay
+          # the layers it exists to re-derive, nor overwrite a good CI entry.
+          no-cache: true
+          cache-from: ''
+          cache-to: ''
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          # CI gates on CRITICAL; this is where the full HIGH picture against a
+          # fresh vuln DB gets looked at. It does not fail the job -- the step
+          # below turns the findings into something that arrives instead.
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+          format: json
+          output: trivy.json
+
+      # A table printed into the log of a scheduled job is a table nobody
+      # reads: the run goes green and a newly-fixable HIGH sits there
+      # indefinitely, which makes CI's "HIGH is reported by the weekly rebuild
+      # instead" untrue in the way that matters. So: one issue, edited in place
+      # while findings remain and closed when they are gone. The Security tab
+      # would be the natural home, but code scanning needs Advanced Security on
+      # a private repo.
+      - name: File the fixable findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: 'Weekly scan: fixable HIGH/CRITICAL findings in the image'
+        run: |
+          set -euo pipefail
+
+          count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy.json)"
+          gh label create "$SCAN_LABEL" --force --color ededed \
+            --description 'Opened by the weekly rebuild; closes itself when the image is clean.'
+          existing="$(gh issue list --state open --label "$SCAN_LABEL" \
+            --json number --jq '.[0].number // empty')"
+
+          if [ "$count" -eq 0 ]; then
+            echo "no fixable HIGH or CRITICAL findings"
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "Clean as of $(date -u +%Y-%m-%d)."
+            fi
+            exit 0
+          fi
+
+          {
+            echo "$count fixable finding(s) as of the $(date -u +%Y-%m-%d) rebuild."
+            echo
+            echo '| Severity | Package | Installed | Fixed in | ID |'
+            echo '| --- | --- | --- | --- | --- |'
+            jq -r '[.Results[]?.Vulnerabilities[]?]
+                   | sort_by(.Severity, .PkgName)[]
+                   | "| \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "-") | [\(.VulnerabilityID)](\(.PrimaryURL // "https://nvd.nist.gov/"))|"' \
+              trivy.json
+            echo
+            echo "Unfixable findings are filtered out, so everything here is a bump someone can actually make."
+            echo
+            echo "From [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          } > body.md
+
+          cat body.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --title "$TITLE" --body-file body.md
+          else
+            gh issue create --title "$TITLE" --label "$SCAN_LABEL" --body-file body.md
+          fi

@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+tests
+*.md
+.env
+.env.example
+.hadolint.yaml
+renovate.json
+LICENSE

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # gitleaks-action lists the PR's commits to scope its scan to the diff,
+      # and reports findings as PR review comments -- GITLEAKS_ENABLE_COMMENTS
+      # defaults to true and pulls.createReviewComment needs write. With read
+      # it 403s on the one run that matters: the one that found a secret.
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # gitleaks walks the PR's commits; a depth-1 clone gives it no range.
+          fetch-depth: 0
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+      # shellcheck ships with the runner image. bin/* and git-aliases.zsh are
+      # zsh, which shellcheck cannot parse -- they get `zsh -n` below instead.
+      # Both are globbed rather than listed: a hardcoded list silently stops
+      # covering the next script someone adds, and this one had already missed
+      # tests/helpers.bash.
+      - name: shellcheck
+        run: shellcheck entrypoint.sh tests/*.bash
+
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
+      - name: zsh syntax check
+        run: |
+          for f in bin/* git-aliases.zsh; do
+            echo "checking $f"
+            zsh -n "$f"
+          done
+
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+          # Passed as HADOLINT_FAILURE_THRESHOLD, which wins over the config
+          # file -- leaving it unset silently reinstates the action's `info`
+          # default and fails the build on style hints.
+          failure-threshold: warning
+
+      # Free for personal repos; organisations need GITLEAKS_LICENSE.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-test:
+    name: Build & test image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: remote-claude-code:ci
+    steps:
+      - uses: actions/checkout@v7
+
+      # Shared with the weekly rebuild, which runs the same build and the same
+      # suite with the cache turned off. Kept as a composite action rather than
+      # a reusable workflow so this job's name -- and with it the `Build & test
+      # image` check that Renovate's automerge is gated on -- stays put.
+      - uses: ./.github/actions/build-and-test
+        with:
+          image: ${{ env.IMAGE }}
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          # CRITICAL blocks; HIGH is reported by the weekly rebuild instead.
+          # Every HIGH in this image today is upstream and unfixable here, and
+          # a permanently-red gate is one nobody reads -- Renovate's automerge
+          # is gated on this job.
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

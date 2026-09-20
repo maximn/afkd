@@ -1,14 +1,35 @@
 FROM node:24.21.0-slim
 
+# Most fetches below are `curl ... | tar`. Under the default `sh -c` a failed
+# download still exits 0 as long as tar is happy with the empty stream, so
+# the image builds and ships without the tool. pipefail makes it fail loudly.
+#
+# pipefail only covers pipelines. `sh -c "$(curl ...)"` is a command
+# substitution: a failed download is substituted in as the empty string and
+# `sh -c ""` exits 0, which is why the starship install below writes the
+# script to a file and runs that instead.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ENV LANG=C.UTF-8
 
-RUN (type -p wget >/dev/null || apt-get update && apt-get install -y wget) \
-    && mkdir -p -m 755 /etc/apt/keyrings \
+# `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
+# skipped apt-get update and ran the install against empty package lists. It is
+# latent only because node:*-slim purges wget in its own build; the day the base
+# image keeps it -- a Renovate bump away -- the short circuit goes live.
+RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y wget; fi \
+    && mkdir -p /etc/apt/keyrings \
+    && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 
+# openssh-server's postinst generates host keys during the install below.
+# Left in place they are baked into the image and shared by every container
+# built from it, and the entrypoint's `ssh-keygen -A` would never replace
+# them -- it only creates key types that are missing. Removing them here
+# means each deployment generates its own on first boot, which is what the
+# entrypoint already claims to do.
 RUN apt-get update && apt-get install -y \
     openssh-server \
     git \
@@ -28,7 +49,8 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
-    && chsh -s $(which zsh)
+    && rm -f /etc/ssh/ssh_host_* \
+    && chsh -s "$(which zsh)"
 
 # Everything below is version-pinned rather than fetched as :latest, so the
 # image only changes when a commit changes it and any build can be reproduced
@@ -46,7 +68,9 @@ RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION
 
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
 ARG STARSHIP_VERSION=1.26.0
-RUN sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes --version "v${STARSHIP_VERSION}"
+RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
+    && sh /tmp/starship-install.sh --yes --version "v${STARSHIP_VERSION}" \
+    && rm /tmp/starship-install.sh
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
 ARG GIT_SPICE_VERSION=0.31.2
