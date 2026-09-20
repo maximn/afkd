@@ -135,6 +135,26 @@ assert_github_key_usable() {
   [ "$status" -ne 0 ]
 }
 
+@test "boots with a usable GitHub key even with no network" {
+  # ssh-keyscan exits non-zero when github.com does not resolve, which is any
+  # boot that races the network -- a Coolify restart ahead of its DNS, an
+  # egress firewall, a flaky resolver. Unguarded under `set -e` that aborted
+  # the entrypoint before `exec sshd`, leaving a container nobody could log in
+  # to and fix. GITHUB_SSH_KEY has to be set or the keyscan is never reached.
+  start_box --network none -e SSH_PUBLIC_KEYS="$PUBKEY" -e GITHUB_SSH_KEY="$PRIVKEY"
+  wait_ready
+
+  run box_logs
+  [[ "$output" == *"could not reach github.com"* ]]
+
+  # Everything that does not need the network still has to have happened.
+  run in_box stat -c '%a' /root/.ssh/github_ed25519
+  [ "$output" = "600" ]
+
+  run in_box grep -q 'IdentityFile /root/.ssh/github_ed25519' /root/.ssh/config
+  [ "$status" -eq 0 ]
+}
+
 # --- .zshenv forwarding ------------------------------------------------------
 
 @test "round-trips env values containing spaces, quotes and metacharacters" {

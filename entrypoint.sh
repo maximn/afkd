@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
-# Persist SSH host keys across redeployments. A deployment mounts a volume at
-# /root/.config, but nothing in the image creates it -- with no volume the cp
-# below is fatal under `set -e`.
-mkdir -p /root/.config
+# Every directory this script writes into, created up front. Which of them
+# already exist depends on what the deployment mounts where: /root/.config is a
+# volume in production and absent on a bare `docker run`, and /root/.ssh comes
+# from the image today but would be shadowed by a volume mounted over it. A
+# missing directory turns one of the redirects below into a fatal error under
+# `set -e`, and an entrypoint that dies never reaches `exec sshd`.
+mkdir -p /root/.config /root/.claude /root/.ssh /root/dev
+
+# Persist SSH host keys across redeployments.
 if [ ! -f /root/.config/ssh_host_ed25519_key ]; then
   ssh-keygen -A
   cp /etc/ssh/ssh_host_*_key* /root/.config/
@@ -58,7 +63,12 @@ if [ -n "${GITHUB_SSH_KEY}" ]; then
 fi
 
 if [ "${gh_key_ok:-0}" = "1" ]; then
-  ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null
+  # Unguarded this is fatal under `set -e`: ssh-keyscan exits 1 when github.com
+  # does not resolve, which happens on any boot that wins a race with the
+  # network. Losing known_hosts costs you git-over-ssh; aborting here costs you
+  # sshd, and with it every way back into the box.
+  ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null \
+    || echo "warning: could not reach github.com to record its host key; git over ssh may prompt" >&2
   cat > /root/.ssh/config <<'SSHCFG'
 Host github.com
   IdentityFile /root/.ssh/github_ed25519
@@ -82,7 +92,6 @@ fi
 chmod 600 /root/.zshenv
 
 # Claude Code default settings
-mkdir -p /root/.claude
 if [ ! -f /root/.claude/settings.json ]; then
   cat > /root/.claude/settings.json <<'SETTINGS'
 {
@@ -118,8 +127,5 @@ if [ -n "${NTFY_URL}" ]; then
     rm -f /tmp/settings.json
   fi
 fi
-
-# Ensure ~/dev exists
-mkdir -p /root/dev
 
 exec /usr/sbin/sshd -D
