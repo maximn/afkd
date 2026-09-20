@@ -1,13 +1,22 @@
 FROM node:24.21.0-slim
 
-# Every fetch below is `curl ... | tar`. Under the default `sh -c` a failed
+# Most fetches below are `curl ... | tar`. Under the default `sh -c` a failed
 # download still exits 0 as long as tar is happy with the empty stream, so
 # the image builds and ships without the tool. pipefail makes it fail loudly.
+#
+# pipefail only covers pipelines. `sh -c "$(curl ...)"` is a command
+# substitution: a failed download is substituted in as the empty string and
+# `sh -c ""` exits 0, which is why the starship install below writes the
+# script to a file and runs that instead.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
 
-RUN (command -v wget >/dev/null || apt-get update && apt-get install -y wget) \
+# `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
+# skipped apt-get update and ran the install against empty package lists. It is
+# latent only because node:*-slim purges wget in its own build; the day the base
+# image keeps it -- a Renovate bump away -- the short circuit goes live.
+RUN if ! command -v wget >/dev/null; then apt-get update && apt-get install -y wget; fi \
     && mkdir -p /etc/apt/keyrings \
     && chmod 755 /etc/apt/keyrings \
     && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -59,7 +68,9 @@ RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION
 
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
 ARG STARSHIP_VERSION=1.26.0
-RUN sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- --yes --version "v${STARSHIP_VERSION}"
+RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
+    && sh /tmp/starship-install.sh --yes --version "v${STARSHIP_VERSION}" \
+    && rm /tmp/starship-install.sh
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
 ARG GIT_SPICE_VERSION=0.31.2
