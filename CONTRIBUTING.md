@@ -36,6 +36,18 @@ for f in bin/t bin/h bin/cc bin/ch git-aliases.zsh; do zsh -n "$f"; done
 CI runs all of the above plus hadolint, actionlint, gitleaks and a Trivy scan
 of the built image.
 
+## What CI cannot check
+
+The suite boots the image. It knows nothing about the deployment, so anything
+that lives in Coolify rather than in this repo — environment variables, mounted
+volumes, exposed ports — can be green here and broken in production.
+
+The sharp edge is a *newly required* variable. `entrypoint.sh` exits when
+`SSH_PUBLIC_KEYS` is empty, by design: no keys means nobody could log in. A
+variable the running app has never been given turns a merge into a container
+that refuses to boot, with CI still green. Set it on the deployment first, then
+merge.
+
 ## Versions
 
 Tool versions live in `ARG`s in the `Dockerfile`, each with a `# renovate:`
