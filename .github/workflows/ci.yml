@@ -30,6 +30,11 @@ jobs:
         with:
           # gitleaks walks the PR's commits; a depth-1 clone gives it no range.
           fetch-depth: 0
+          # checkout otherwise leaves the job's token in .git/config, where
+          # every later step -- and anything those steps run -- can read it and
+          # push with it. Nothing in this workflow writes to the repo, so the
+          # credential has no reason to outlive the clone.
+          persist-credentials: false
 
       # Cheapest check in the repo and the one guarding the automerge gate --
       # run it before anything that needs a container pulled.
@@ -104,6 +109,8 @@ jobs:
       IMAGE: remote-claude-code:ci-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Shared with the weekly rebuild, which runs the same build and the same
       # suite with the cache turned off. Kept as a composite action rather than

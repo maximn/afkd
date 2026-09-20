@@ -54,17 +54,28 @@ runs:
     # printed, because the build is native only for as long as nobody adds a
     # `platforms:` above: the day someone does, the suite would go on passing
     # while testing the same architecture twice.
+    #
+    # The input reaches the shell through env, here and in the bats install
+    # below, rather than as `${{ }}` spliced into the script. An expansion is
+    # pasted in before bash ever parses the line, so an input carrying a quote
+    # or a `$(...)` is read as code -- the same defect the entrypoint's ntfy
+    # hook had. A composite action cannot see its own call sites, so it does
+    # not get to assume its inputs are trusted.
     - name: Image is built for the runner's own architecture
       shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
       run: |
-        built="$(docker image inspect --format '{{.Architecture}}' "${{ inputs.image }}")"
+        built="$(docker image inspect --format '{{.Architecture}}' "$IMAGE")"
         runner="$(dpkg --print-architecture)"
         echo "image: $built | runner: $runner"
         [ "$built" = "$runner" ]
 
     - name: Install bats
       shell: bash
-      run: sudo npm install -g "bats@${{ inputs.bats-version }}"
+      env:
+        BATS_VERSION: ${{ inputs.bats-version }}
+      run: sudo npm install -g "bats@${BATS_VERSION}"
 
     - name: Run test suite
       shell: bash

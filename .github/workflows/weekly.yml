@@ -33,6 +33,8 @@ jobs:
       IMAGE: remote-claude-code:weekly-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # The same build and the same suite CI runs, with the cache turned off --
       # the point of the exercise is to prove the pinned fetches still resolve
