@@ -1,5 +1,15 @@
 #!/bin/bash
-set -e
+# -u, because every guard in this file keys off an environment variable and a
+# typo'd name reads as "unset": the guard then silently skips the thing it was
+# written to protect. Every genuinely optional input below is spelled ${VAR:-}
+# to say out loud that it may be absent, which makes a bare ${TYPO} an error
+# rather than an empty string.
+#
+# -o pipefail changes nothing here today -- the pipelines that remain are
+# either an `if` condition or explicitly guarded -- and is set so that the next
+# pipeline added does not quietly report only its last command. Same reasoning
+# as the SHELL line in the Dockerfile.
+set -euo pipefail
 
 # Every directory this script writes into, created up front. Which of them
 # already exist depends on what the deployment mounts where: /root/.config is a
@@ -22,7 +32,7 @@ ln -sf /root/.claude/.claude.json /root/.claude.json
 
 # SSH authorized keys. Password auth is off, so no keys means no way in and a
 # container that looks healthy while being unreachable. Fail loudly instead.
-if [ -z "${SSH_PUBLIC_KEYS}" ]; then
+if [ -z "${SSH_PUBLIC_KEYS:-}" ]; then
   echo "error: SSH_PUBLIC_KEYS is empty - nothing could log in. Set it to one public key per line." >&2
   exit 1
 fi
@@ -37,25 +47,30 @@ chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
 #
 # Warned about at boot rather than exited on, because it costs you a commit,
 # not a way into the box.
-if [ -n "${GIT_USER_NAME}" ]; then
+if [ -n "${GIT_USER_NAME:-}" ]; then
   git config --global user.name "${GIT_USER_NAME}"
 fi
-if [ -n "${GIT_USER_EMAIL}" ]; then
+if [ -n "${GIT_USER_EMAIL:-}" ]; then
   git config --global user.email "${GIT_USER_EMAIL}"
 fi
-if [ -z "${GIT_USER_NAME}" ] || [ -z "${GIT_USER_EMAIL}" ]; then
+if [ -z "${GIT_USER_NAME:-}" ] || [ -z "${GIT_USER_EMAIL:-}" ]; then
   echo "warning: GIT_USER_NAME and/or GIT_USER_EMAIL are unset - git will refuse to commit until you set them." >&2
 fi
 
 # GitHub SSH key (via GITHUB_SSH_KEY env var)
-if [ -n "${GITHUB_SSH_KEY}" ]; then
+if [ -n "${GITHUB_SSH_KEY:-}" ]; then
   # This has flip-flopped between base64 and raw four times (see 246779d,
   # 68e6a7f, f39b1d7): each form works in one Coolify setup and breaks the
   # other, and the docs have been out of sync with the code since 45350b9.
   # Accept both and stop guessing. CRs are stripped because Coolify can hand
   # back CRLF, which makes openssl fail with an opaque libcrypto error (ce7058e).
   # umask so the key is never briefly world-readable between write and chmod.
-  if printf '%s' "${GITHUB_SSH_KEY}" | grep -q -- '-----BEGIN'; then
+  # A bash substring match rather than `printf | grep -q`: under pipefail a
+  # grep that finds its match and exits first leaves printf to die of SIGPIPE,
+  # and the pipeline then reports 141 even though the key is a PEM. Only a key
+  # larger than the pipe buffer could actually trigger it, which is not a key
+  # anyone has -- but the match needs no subprocess either way.
+  if [[ "${GITHUB_SSH_KEY}" == *"-----BEGIN"* ]]; then
     (umask 077; printf '%s\n' "${GITHUB_SSH_KEY}" | sed 's/\r$//' > /root/.ssh/github_ed25519)
   else
     (umask 077; printf '%s' "${GITHUB_SSH_KEY}" | tr -d '\r\n' | base64 -d > /root/.ssh/github_ed25519 2>/dev/null) || true
