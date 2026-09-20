@@ -67,6 +67,14 @@ ch              # the herdr equivalent
 `bin/t` and `bin/h` are the server-side counterparts, for when you're already
 on the box — over plain SSH from a phone, for instance.
 
+On a new box, sign the agents in once — their credentials live in the mounted
+volumes, so this survives redeploys:
+
+```bash
+cc
+claude login
+```
+
 ## Development
 
 CI builds the image and runs the test suite against a running container. To do
