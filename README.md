@@ -45,7 +45,9 @@ docker run -d -p 2222:22 \
 
 `SSH_PUBLIC_KEYS` is required and the entrypoint refuses to start without it:
 password auth is disabled, so no keys would mean a container that passes its
-healthcheck while being impossible to log into.
+healthcheck while being impossible to log into. The image carries that
+healthcheck itself (`pgrep -x sshd`), so a host that reads one from the image
+gets it with no configuration.
 
 ## Connect
 

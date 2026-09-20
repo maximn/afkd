@@ -51,14 +51,12 @@ reads as the IDE randomly breaking rather than as a missing volume.
 
 ## Healthcheck
 
-| Setting | Value |
-|---|---|
-| Type | CMD |
-| Command | `pgrep sshd` |
-| Interval | 30s |
-| Timeout | 30s |
-| Retries | 3 |
-| Start Period | 30s |
+Nothing to configure — the image ships its own `HEALTHCHECK` (`pgrep -x sshd`,
+every 30s after a 30s grace period), so Coolify picks it up from the image and
+so does anything else that runs the container. It used to exist only here, as
+four fields to paste into the Coolify UI, which left a Compose or Kubernetes
+deployment with no health signal at all -- and a box whose entrypoint died
+before `exec sshd` looking no different from a working one.
 
 ## Notes
 

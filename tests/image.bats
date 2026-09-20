@@ -175,3 +175,15 @@ dockerfile_arg() {
   [ "$status" -eq 0 ]
   [ "${output//[[:space:]]/}" = "0" ]
 }
+
+# The healthcheck lived only as a field in coolify.md, so every deployment that
+# was not Coolify had none -- and a box whose entrypoint died before `exec
+# sshd` looked no different from a healthy one. Docker starts probing one
+# interval in, so this is normally already green by the time it is asked: the
+# file shares a box and this test runs last.
+@test "reports itself healthy once sshd is up" {
+  run docker inspect -f '{{if .Config.Healthcheck}}yes{{end}}' "$IMAGE"
+  [ "$output" = "yes" ]
+
+  wait_healthy
+}

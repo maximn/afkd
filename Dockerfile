@@ -191,4 +191,13 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 22
+
+# sshd is the last thing the entrypoint execs, so "sshd is running" means the
+# whole entrypoint ran -- the same signal the test suite waits on. Shipped in
+# the image because it previously existed only as a field in coolify.md, which
+# left every other deployment (Compose, Kubernetes, a bare `docker run`) with
+# no health signal at all.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD pgrep -x sshd >/dev/null || exit 1
+
 CMD ["/usr/local/bin/entrypoint.sh"]

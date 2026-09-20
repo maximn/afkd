@@ -65,6 +65,26 @@ wait_ready() {
   return 1
 }
 
+# The image ships a HEALTHCHECK, so Docker tracks a status of its own. That is
+# a different signal from wait_ready: this one is what an orchestrator acts on,
+# and it only turns green if Docker is running the probe and the probe passes.
+# Docker issues the first one an interval in, so expect a wait on a young box.
+wait_healthy() {
+  local i status=""
+  for ((i = 0; i < 120; i++)); do
+    status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$BOX" 2>/dev/null)"
+    case "$status" in
+      healthy) return 0 ;;
+      unhealthy) break ;;
+      "") echo "container declares no healthcheck" >&2; return 1 ;;
+    esac
+    sleep 1
+  done
+  echo "container never became healthy (status: ${status:-unknown}). probes:" >&2
+  docker inspect -f '{{json .State.Health}}' "$BOX" >&2
+  return 1
+}
+
 in_box() {
   docker exec "$BOX" "$@"
 }
