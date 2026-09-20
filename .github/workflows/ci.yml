@@ -78,22 +78,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-and-test:
-    name: Build & test image
-    runs-on: ubuntu-latest
+  # One job per architecture, each building natively on a runner of that
+  # architecture rather than one job emulating the other through QEMU -- an
+  # emulated arm64 build of this image runs long enough to be the slowest
+  # thing in CI, and the suite it feeds boots a real container for every case.
+  #
+  # arm64 runners are 2 vCPU and billed against the Actions allowance while
+  # this repo is private; they become free 4-vCPU runners when it goes public.
+  build-and-test-matrix:
+    name: Build & test image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      # The point of two architectures is finding out which one broke. With
+      # fail-fast the second is cancelled mid-build and the log says nothing
+      # about whether it would have passed.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     env:
-      IMAGE: remote-claude-code:ci
+      IMAGE: remote-claude-code:ci-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
 
       # Shared with the weekly rebuild, which runs the same build and the same
       # suite with the cache turned off. Kept as a composite action rather than
-      # a reusable workflow so this job's name -- and with it the `Build & test
-      # image` check that Renovate's automerge is gated on -- stays put.
+      # a reusable workflow so the aggregate job's name below -- the `Build &
+      # test image` check Renovate's automerge is gated on -- stays put.
       - uses: ./.github/actions/build-and-test
         with:
           image: ${{ env.IMAGE }}
+          # Scoped per architecture. A single scope is one cache shared by two
+          # builds whose every layer differs, so each run evicts the other's
+          # entries and neither ever gets a hit.
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -106,3 +129,24 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: '1'
+
+  # The gate Renovate's automerge waits on. Matrixing the job above renamed
+  # its checks to `Build & test image (amd64)` and `(arm64)`, and a required
+  # check that no longer exists is one that never reports -- so the name lives
+  # here now, on a job that passes only if every architecture did.
+  #
+  # `always()` because a skipped or cancelled matrix leg leaves `needs` in a
+  # state the default `success()` would quietly let through as not-a-failure.
+  build-and-test:
+    name: Build & test image
+    needs: build-and-test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: every architecture built and passed
+        env:
+          RESULT: ${{ needs.build-and-test-matrix.result }}
+        run: |
+          echo "matrix result: $RESULT"
+          [ "$RESULT" = success ]
