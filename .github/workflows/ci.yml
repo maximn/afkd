@@ -31,6 +31,14 @@ jobs:
           # gitleaks walks the PR's commits; a depth-1 clone gives it no range.
           fetch-depth: 0
 
+      # Cheapest check in the repo and the one guarding the automerge gate --
+      # run it before anything that needs a container pulled.
+      - name: pinning guard is honest
+        run: node scripts/check-pins.test.mjs
+
+      - name: every dependency is pinned and visible to Renovate
+        run: node scripts/check-pins.mjs
+
       - name: actionlint
         uses: docker://rhysd/actionlint:1.7.12
         with:
