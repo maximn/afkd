@@ -24,14 +24,22 @@ bats --print-output-on-failure tests/
 
 Every test boots the image. If you change `entrypoint.sh`, add the case that
 would have caught the bug — the existing tests in `tests/entrypoint.bats` each
-correspond to a failure that reached production.
+correspond to a failure that reached production. Make sure the case you add can
+actually fail: `docker exec` inherits the container's environment, so reading a
+variable back without clearing it first asserts nothing.
+
+The suite cleans up the volumes it creates. If a run is interrupted, they are
+all labelled: `docker volume prune --filter label=rcc-ci=1`.
 
 Before opening a PR:
 
 ```bash
-shellcheck entrypoint.sh
-for f in bin/t bin/h bin/cc bin/ch git-aliases.zsh; do zsh -n "$f"; done
+shellcheck entrypoint.sh tests/*.bash
+for f in bin/* git-aliases.zsh; do zsh -n "$f"; done
 ```
+
+Both are globs, and CI runs the same two lines — add a script and it is
+covered without anyone remembering to extend a list.
 
 CI runs all of the above plus hadolint, actionlint, gitleaks and a Trivy scan
 of the built image.

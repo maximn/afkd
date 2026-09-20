@@ -20,8 +20,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      # gitleaks-action lists the PR's commits to scope its scan to the diff.
-      pull-requests: read
+      # gitleaks-action lists the PR's commits to scope its scan to the diff,
+      # and reports findings as PR review comments -- GITLEAKS_ENABLE_COMMENTS
+      # defaults to true and pulls.createReviewComment needs write. With read
+      # it 403s on the one run that matters: the one that found a secret.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,18 +36,20 @@ jobs:
         with:
           args: -color
 
-      # shellcheck ships with the runner image. entrypoint.sh is the only bash
-      # script here; bin/* and git-aliases.zsh are zsh, which shellcheck cannot
-      # parse -- they get `zsh -n` below instead.
+      # shellcheck ships with the runner image. bin/* and git-aliases.zsh are
+      # zsh, which shellcheck cannot parse -- they get `zsh -n` below instead.
+      # Both are globbed rather than listed: a hardcoded list silently stops
+      # covering the next script someone adds, and this one had already missed
+      # tests/helpers.bash.
       - name: shellcheck
-        run: shellcheck entrypoint.sh
+        run: shellcheck entrypoint.sh tests/*.bash
 
       - name: Install zsh
         run: sudo apt-get update && sudo apt-get install -y zsh
 
       - name: zsh syntax check
         run: |
-          for f in bin/t bin/h bin/cc bin/ch git-aliases.zsh; do
+          for f in bin/* git-aliases.zsh; do
             echo "checking $f"
             zsh -n "$f"
           done
