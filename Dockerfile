@@ -143,7 +143,25 @@ RUN npm install -g \
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
-RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Replaces `sed -i 's/#PasswordAuthentication yes/...' sshd_config`, which
+# edited a *commented* line and so no-opped into a box with password auth on
+# the day Debian reworded it. See the header in the file itself.
+COPY sshd_config.d/99-remote-claude.conf /etc/ssh/sshd_config.d/99-remote-claude.conf
+# A hardening file that is silently not read is worse than no hardening file,
+# so assert the end state rather than the mechanism: `sshd -T` prints the
+# config as sshd has actually merged it. It refuses to run without host keys,
+# hence the keygen -- and the rm in the same layer, so none are baked into the
+# image (tests/image.bats asserts that separately).
+RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
+    && ssh-keygen -A >/dev/null \
+    && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
+    && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
+                 'permitrootlogin prohibit-password' 'x11forwarding no' \
+                 'maxauthtries 4' 'clientaliveinterval 300'; do \
+         grep -qx "$kv" /tmp/sshd-effective.conf \
+           || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
+       done \
+    && rm -f /tmp/sshd-effective.conf /etc/ssh/ssh_host_*
 
 COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h

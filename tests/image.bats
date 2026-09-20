@@ -143,9 +143,27 @@ dockerfile_arg() {
   [ "$status" -eq 0 ]
 }
 
-@test "disables ssh password authentication" {
-  run in_box grep -qE '^PasswordAuthentication no' /etc/ssh/sshd_config
+# Was a grep for `^PasswordAuthentication no` in /etc/ssh/sshd_config, which
+# asserted the *mechanism* -- that a particular sed had rewritten a particular
+# line. `sshd -T` prints the configuration as sshd has actually merged it,
+# drop-in included, so this keeps holding however the setting gets there and
+# stops holding the moment sshd disagrees. The Dockerfile runs the same check
+# at build time; this one proves it survived into a booted container, where
+# /etc/ssh has since been written over with the persisted host keys.
+@test "sshd runs with the hardening drop-in in effect" {
+  run in_box /usr/sbin/sshd -T
   [ "$status" -eq 0 ]
+
+  local kv
+  for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
+    'permitemptypasswords no' 'permitrootlogin prohibit-password' \
+    'x11forwarding no' 'maxauthtries 4' \
+    'clientaliveinterval 300' 'clientalivecountmax 2'; do
+    grep -qx "$kv" <<<"$output" || {
+      echo "not in effect: $kv"
+      false
+    }
+  done
 }
 
 # Trivy caught these baked into the image: openssh-server's postinst generates

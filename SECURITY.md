@@ -15,9 +15,11 @@ credentials belong to.
 
 Design decisions that follow from that:
 
-- **Key-based SSH only.** `PasswordAuthentication` is disabled in the image, and
-  the entrypoint refuses to boot with an empty `SSH_PUBLIC_KEYS` rather than
-  come up unreachable.
+- **Key-based SSH only.** `sshd_config.d/99-remote-claude.conf` turns off
+  password and keyboard-interactive authentication and restricts root to
+  `prohibit-password`, and the build fails unless `sshd -T` confirms every one
+  of those took effect. The entrypoint refuses to boot with an empty
+  `SSH_PUBLIC_KEYS` rather than come up unreachable.
 - **Secrets are injected as environment variables**, never baked into the image
   or committed. `.zshenv` and any private key material are written `0600`, and
   the key is written under a `umask` so it is never briefly world-readable.

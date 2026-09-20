@@ -9,7 +9,13 @@ Host cc
     Port 2222
     User root
     IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
 ```
+
+`IdentitiesOnly yes` stops ssh offering every key in your agent before this
+one. The box allows four authentication attempts and each offered key spends
+one, so without it a well-stocked agent can be refused with "Too many
+authentication failures" while holding the right key.
 
 ## Shell Function (add to `~/.zshrc`)
 
