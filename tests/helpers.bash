@@ -40,6 +40,9 @@ make_volume() {
 start_box() {
   [ -n "${CONFIG_VOL:-}" ] || CONFIG_VOL="$(make_volume)"
   BOX="rcc-ci-$$-${RANDOM}"
+  # Exported so a file-scoped setup_file can hand its box to the tests: bats
+  # runs setup_file in a shell of its own.
+  export BOX CONFIG_VOL
   docker run -d --name "$BOX" --label "${LABEL}=1" \
     -v "${CONFIG_VOL}:/root/.config" "$@" "$IMAGE" >/dev/null
 }

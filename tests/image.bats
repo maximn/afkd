@@ -7,16 +7,18 @@
 
 load helpers
 
+# One box for the whole file. Every assertion below is a property of the
+# *image*, so a fresh container per test bought nothing and cost ten boots --
+# ten volume creations, ten `ssh-keygen -A`s, ten jq merges and ten waits on
+# the readiness poll -- for one image. This is the slowest file in the suite
+# and the dominant cost of the build-and-test job.
 setup_file() {
   generate_keypair
-}
-
-setup() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 }
 
-teardown() {
+teardown_file() {
   cleanup_box
 }
 
