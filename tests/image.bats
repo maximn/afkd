@@ -104,6 +104,40 @@ dockerfile_arg() {
   [[ "$output" == *"git status"* ]]
 }
 
+# The g* shortcuts come from the oh-my-zsh git plugin, vendored at a pinned
+# commit. There is no --version to check, so the pin is asserted structurally:
+# a 40-char commit rather than a branch, and both files actually on disk. The
+# behavioural half matters more -- a fetch that 404s leaves an empty file and a
+# shell that still starts, just without any of the aliases.
+@test "vendors the git plugin at a pinned commit" {
+  local want
+  want="$(dockerfile_arg OMZ_REF)"
+  [[ "$want" =~ ^[0-9a-f]{40}$ ]]
+
+  run in_box test -s /root/.omz-git/lib-git.zsh
+  [ "$status" -eq 0 ]
+  run in_box test -s /root/.omz-git/git.plugin.zsh
+  [ "$status" -eq 0 ]
+}
+
+# gwip and git_main_branch exist only in the plugin, never in git-aliases.zsh,
+# so they are what distinguishes "the plugin loaded" from "the overrides file
+# loaded". gcm is the one deliberate divergence and is sourced after the
+# plugin, so it has to win.
+@test "loads the git plugin, with the local overrides winning" {
+  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; alias gwip'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"git add -A"* ]]
+
+  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; type git_main_branch'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"function"* ]]
+
+  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; alias gcm'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"git checkout main"* ]]
+}
+
 @test "knows the ghostty terminfo the local client forwards" {
   run in_box infocmp xterm-ghostty
   [ "$status" -eq 0 ]

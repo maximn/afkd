@@ -13,6 +13,11 @@
 // `check()` is exported as a pure function so check-pins.test.mjs can feed it
 // broken Dockerfiles without touching disk.
 //
+// Pins come in two shapes: `ARG <NAME>_VERSION=` for anything that tags its
+// releases, and `ARG <NAME>_REF=` for a repo that does not - oh-my-zsh ships no
+// tags at all, so a commit is the only thing there is to pin. Both are held to
+// the same rules; only the datasource and the Renovate manager differ.
+//
 // Escape hatch: put `# pin-check: ignore - <reason>` on the line directly
 // above a RUN to exempt that block from the fetch rules. Used for artifacts
 // that genuinely have no version, like an apt keyring.
@@ -58,7 +63,7 @@ export function check(src, renovateJson) {
   // --- rule 1: every version ARG is annotated ------------------------------
   const declared = []
   lines.forEach((line, i) => {
-    const m = /^ARG (\w+_VERSION)=/.exec(line)
+    const m = /^ARG (\w+_(?:VERSION|REF))=/.exec(line)
     if (!m) return
     declared.push(m[1])
     if (!/^# renovate:/.test(prevCode(i - 1))) {
@@ -70,8 +75,8 @@ export function check(src, renovateJson) {
   // --- rule 2: no annotation left dangling ---------------------------------
   lines.forEach((line, i) => {
     if (!/^# renovate:/.test(line)) return
-    if (!/^ARG \w+_VERSION=/.test(nextCode(i + 1))) {
-      problem(i + 1, "'# renovate:' annotation is not followed by an ARG <NAME>_VERSION=",
+    if (!/^ARG \w+_(?:VERSION|REF)=/.test(nextCode(i + 1))) {
+      problem(i + 1, "'# renovate:' annotation is not followed by an ARG <NAME>_VERSION= or <NAME>_REF=",
         'move the annotation directly above its ARG, or delete it')
     }
   })
@@ -80,15 +85,18 @@ export function check(src, renovateJson) {
   // The real test. An annotation that is subtly malformed - wrong key order, a
   // stray double space - reads fine to a human and is silently invisible to
   // Renovate. Applying the configured regex is the only way to know it matched.
-  const manager = renovateJson.customManagers?.find((m) => m.customType === 'regex')
-  if (!manager) {
+  const managers = (renovateJson.customManagers ?? []).filter((m) => m.customType === 'regex')
+  if (managers.length === 0) {
     problem(1, 'renovate.json has no regex customManager, so no ARG pin is tracked',
       'restore the customManagers block')
   } else {
+    // Every regex manager is applied, not just the first: version pins and
+    // digest pins need separate managers, and a pin counts as tracked if any
+    // one of them matches it.
     const seen = new Set()
-    for (const pattern of manager.matchStrings) {
+    for (const pattern of managers.flatMap((m) => m.matchStrings)) {
       for (const m of src.matchAll(new RegExp(pattern, 'g'))) {
-        const name = /ARG (\w+_VERSION)=/.exec(m[0])
+        const name = /ARG (\w+_(?:VERSION|REF))=/.exec(m[0])
         if (name) seen.add(name[1])
       }
     }
@@ -139,8 +147,8 @@ export function check(src, renovateJson) {
     // rule 6: every download interpolates a pinned version. Matched as a
     // command (followed by a flag or URL) rather than bare, so the `curl \
     // wget \` package names in the apt block don't count as downloads.
-    if (/\b(curl|wget)\s+(-|https?:)/.test(text) && !/\$\{?\w*VERSION/.test(text)) {
-      problem(start, 'downloads something without interpolating a *_VERSION',
+    if (/\b(curl|wget)\s+(-|https?:)/.test(text) && !/\$\{?\w*(?:VERSION|REF)/.test(text)) {
+      problem(start, 'downloads something without interpolating a *_VERSION or *_REF',
         'pin it to an annotated ARG, or mark the block: # pin-check: ignore - <reason>')
     }
   }
