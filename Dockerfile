@@ -12,6 +12,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
 
+# npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
+# writable layer and so is thrown away on every redeploy. Point it at /root/.cache
+# instead, which is a volume, so one cache volume covers npm alongside everything
+# that follows the spec (JetBrains backends and indexes, uv, pip).
+ENV NPM_CONFIG_CACHE=/root/.cache/npm
+
 # `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
 # skipped apt-get update and ran the install against empty package lists. It is
 # latent only because node:*-slim purges wget in its own build; the day the base
@@ -51,6 +57,19 @@ RUN apt-get update && apt-get install -y \
     zsh \
     htop \
     procps \
+# JetBrains remote development runs a full desktop IDE on the box and rasterizes
+# its UI server-side, so the backend's JBR loads libawt_xawt.so and needs the X
+# and font libraries even though nothing here has a display. Without them the
+# backend dies at startup with an UnsatisfiedLinkError and Gateway reports only
+# that it failed to start. ~5 MB; libsecret is deliberately left out because it
+# drags in glib and ICU for 57 MB to back a credential store that falls back to
+# a file.
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libfreetype6 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /root/.ssh \
     && rm -f /etc/ssh/ssh_host_* \
