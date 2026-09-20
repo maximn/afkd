@@ -89,7 +89,7 @@ RUN apt-get update && apt-get install -y \
 # between rebuilds instead of between commits. oh-my-zsh ships no tags, so the
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
-ARG OMZ_REF=0b50afdbfd8cbd0e03be68ecec4e1b5d3f55ef0a
+ARG OMZ_REF=6421f8e104e4e87f2373362cbf61e46a918612a7
 RUN mkdir -p /root/.omz-git \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
          -o /root/.omz-git/lib-git.zsh \
