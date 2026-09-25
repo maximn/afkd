@@ -1,0 +1,20 @@
+# zizmor's configuration, discovered here before the repo root. Its default
+# unpinned-uses policy is already blanket hash-pin for every action, which is
+# the whole reason the gate exists, so nothing below loosens it.
+rules:
+  # The two in-repo composite action refs are written `./.github/actions/...`,
+  # and this audit wants `$/.github/actions/...`, the self-repository form
+  # GitHub shipped in July 2026. It is the better form: `./` resolves against
+  # whatever sits at that path on the runner's filesystem, while `$/` names
+  # this repository and counts as pinned.
+  #
+  # No actionlint release parses `$/` yet. 1.7.12 is the latest and rejects it
+  # as an action with no ref, so taking the fix trades a low finding for a red
+  # lint job. Ignored per file rather than disabled: a disabled audit drops out
+  # of the suppressed count entirely, so the same finding turning up in some
+  # new workflow would go unseen. Delete this block once actionlint ships
+  # support, and make the change.
+  self-repository:
+    ignore:
+      - ci.yml
+      - weekly.yml

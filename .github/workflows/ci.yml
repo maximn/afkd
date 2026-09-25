@@ -49,6 +49,30 @@ jobs:
         with:
           args: -color
 
+      # Holds the workflows to the rule check-pins holds the Dockerfile to.
+      # Renovate keeps the pins current, but only after the fact -- it pins
+      # what is already on main, on its next run -- so this is what stops an
+      # unpinned `uses:` merging in the first place. The default unpinned-uses
+      # policy is already blanket hash-pin; .github/zizmor.yml holds the one
+      # exception and why.
+      #
+      # Run from its image rather than zizmor-action, as actionlint is above.
+      # The action defaults to `version: latest`, which would leave the tool
+      # that enforces pinning floating, and to uploading SARIF, which needs
+      # Advanced Security while this repo is private. A docker:// ref is one
+      # Renovate already tracks.
+      #
+      # The token is for the online audits. impostor-commit is the one that
+      # matters here: it checks each pinned SHA really is upstream's. A commit
+      # from anywhere in a fork's network resolves under the upstream name just
+      # as happily, and a hash pin is worth only what that check proves.
+      - name: zizmor
+        uses: docker://ghcr.io/zizmorcore/zizmor:1.30.1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: .
+
       # shellcheck ships with the runner image. bin/* and git-aliases.zsh are
       # zsh, which shellcheck cannot parse -- they get `zsh -n` below instead.
       # Both are globbed rather than listed: a hardcoded list silently stops
