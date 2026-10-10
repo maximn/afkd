@@ -82,6 +82,16 @@
       "automerge": false
     },
     {
+      "description": "docker:// steps are depType docker, which helpers:pinGitHubActionDigests skips - it pins only action and workflow. Digest them too, as tag@sha256 so the version stays readable; actionlint and zizmor both accept that form, and it clears zizmor's unpinned-images audit.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "docker"
+      ],
+      "pinDigests": true
+    },
+    {
       "description": "The one-shot pin is not a routine bump and should not wait for the weekly window - until it lands, CI's unpinned-uses gate has nothing to pass against.",
       "matchManagers": [
         "github-actions"
