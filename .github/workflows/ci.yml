@@ -45,7 +45,7 @@ jobs:
         run: node scripts/check-pins.mjs
 
       - name: actionlint
-        uses: docker://rhysd/actionlint:1.7.12
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
           args: -color
 
@@ -67,7 +67,7 @@ jobs:
       # from anywhere in a fork's network resolves under the upstream name just
       # as happily, and a hash pin is worth only what that check proves.
       - name: zizmor
-        uses: docker://ghcr.io/zizmorcore/zizmor:1.30.1
+        uses: docker://ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
