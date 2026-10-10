@@ -65,10 +65,53 @@ CI proves the bumped image still boots. Don't replace a pin with `latest`.
 
 ## Commits
 
-Conventional commits with a leading gitmoji, matching the existing history:
+Conventional commits, with the gitmoji *after* the type:
 
 ```
-🐛 fix: quote forwarded env vars when writing .zshenv
-✨ feat: add ch helper and pass the local TERM through to the box
-⬆️ chore: bump herdr to 0.9.1
+fix: 🐛 quote forwarded env vars when writing .zshenv
+feat: ✨ add ch helper and pass the local TERM through to the box
+build: ⬆️ bump herdr to 0.9.1
 ```
+
+The repo squash-merges, so the pull request title *is* the commit that lands on
+`main` — and release-please reads those commits to pick the next version and to
+write `CHANGELOG.md`. `scripts/check-pr-title.mjs` lints the title on every PR,
+including when only the title is edited.
+
+The emoji used to come first (`🔒 fix: ...`). That is why nothing before
+`v0.1.0` appears in the changelog: `@conventional-commits/parser` throws on
+anything ahead of the type, so every one of those commits parses as typeless
+and is dropped. Type first, emoji in the subject, keeps both conventions and
+parses.
+
+Which type you pick decides both the version bump and whether the change
+appears in the changelog at all:
+
+| Type | Bump | Changelog section |
+|---|---|---|
+| `feat` | minor | Features |
+| `fix` | patch | Bug Fixes |
+| `perf` | patch | Performance |
+| `build` | patch | Image toolchain — anything that changes what is *in* the image |
+| `revert` | patch | Reverts |
+| `docs` `style` `refactor` `test` `ci` `chore` | patch | hidden |
+
+A release is cut only when at least one commit lands in a visible section, so a
+week of nothing but `ci:` and `chore:` produces no release — by design. The
+tool versions *are* the product here, which is why Renovate's Dockerfile bumps
+arrive as `build(deps):` and do cut one, while its action bumps arrive as
+`chore(deps):` and do not.
+
+Mark a breaking change with `!` after the type, or a `BREAKING CHANGE:` footer.
+While the version is pre-1.0 that bumps the minor, not the major.
+
+## Releases
+
+`release-please` watches `main`. When there are releasable commits it opens a
+"chore(main): release X.Y.Z" PR that writes `CHANGELOG.md` and `version.txt`;
+merging that PR is what tags the release. Nothing is released by hand, and the
+version is never edited by hand — `.release-please-manifest.json` is the
+record of what has shipped.
+
+Both config files are read from `main`, not from the PR branch, so a change to
+`release-please-config.json` only takes effect once it is merged.
