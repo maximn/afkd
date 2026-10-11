@@ -124,7 +124,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # between rebuilds instead of between commits. oh-my-zsh ships no tags, so the
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
-ARG OMZ_REF=6421f8e104e4e87f2373362cbf61e46a918612a7
+ARG OMZ_REF=48feb570f7b7d80cc7554629ba428c520ea8a3d5
 RUN mkdir -p /root/.omz-git \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
          -o /root/.omz-git/lib-git.zsh \
@@ -132,7 +132,7 @@ RUN mkdir -p /root/.omz-git \
          -o /root/.omz-git/git.plugin.zsh
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
-ARG FZF_VERSION=0.74.4
+ARG FZF_VERSION=0.74.5
 RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin
 
@@ -158,7 +158,7 @@ RUN case "${TARGETARCH}" in \
 
 # herdr is pre-1.0 and ships stable releases weekly.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
-ARG HERDR_VERSION=0.9.1
+ARG HERDR_VERSION=0.9.3
 RUN case "${TARGETARCH}" in \
       amd64) uarch=x86_64 ;; \
       arm64) uarch=aarch64 ;; \
@@ -171,9 +171,9 @@ RUN case "${TARGETARCH}" in \
 # Last of the installs: these two publish most often, so keep the layers
 # they invalidate to a minimum.
 # renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.155.1
+ARG CODEX_VERSION=0.162.1
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.278
+ARG CLAUDE_CODE_VERSION=2.1.296
 RUN npm install -g \
       "@openai/codex@${CODEX_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
