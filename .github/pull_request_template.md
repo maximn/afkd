@@ -1,3 +1,10 @@
+<!-- The title is the commit: this repo squash-merges, so whatever is in the
+     title box lands on main verbatim and release-please parses it to pick the
+     next version and write the changelog. Conventional commit, type first,
+     gitmoji after the colon -- `fix: 🔒 ...`, not `🔒 fix: ...`. The "PR title"
+     check enforces it; the type table in CONTRIBUTING.md says which type puts
+     a change in the changelog and which hides it. -->
+
 ## What changed
 
 <!-- One or two lines. Why, not just what. -->

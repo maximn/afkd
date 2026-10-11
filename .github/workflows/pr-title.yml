@@ -1,0 +1,37 @@
+name: PR title
+
+# The repo squash-merges, so the title is the commit message release-please
+# will parse. `edited` is the type that matters and the reason this is its own
+# workflow: a title fixed after the fact does not re-run anything triggered by
+# `synchronize`, and adding `edited` to CI's triggers would rebuild the image
+# on both architectures every time someone touched the description.
+on:
+  pull_request:
+    types: [opened, reopened, edited]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conventional:
+    name: Title parses as a conventional commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # The title reaches the script through the environment, never through an
+      # interpolated run: block. It is attacker-controlled text on a
+      # pull_request trigger, and `${{ ... }}` splicing it into a shell command
+      # is the same template-injection hole #25 closed in the ntfy hook and #29
+      # closed in the composite action.
+      - name: title parses
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-pr-title.mjs
