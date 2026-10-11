@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Not cancel-in-progress: a cancelled run can leave a release tagged with no
+# GitHub release attached, or an `autorelease: pending` label on a PR nothing
+# is coming back for. Two queued runs are cheap; a half-finished release is not.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release PR & tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Writes CHANGELOG.md, version.txt and .release-please-manifest.json on
+      # the release branch, then tags and creates the GitHub release.
+      contents: write
+      # Opens and grooms the release PR, and labels it `autorelease: pending`
+      # -- the label is how the next run recognises the PR it already opened.
+      pull-requests: write
+    steps:
+      # No checkout: the action talks to the API and never reads the worktree,
+      # so there is no clone to leave a token in. release-please's own config
+      # (release-please-config.json, .release-please-manifest.json) is read
+      # from the default branch, not from disk -- which is also why a change
+      # to either only takes effect once it is merged.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        # Pinned with the exact version in the comment, as hadolint-action and
+        # trivy-action already are: a comment naming a floating major goes
+        # stale the moment that major moves, and zizmor's ref-version-mismatch
+        # then fails `lint` until Renovate catches up -- the multi-day red
+        # window #35 had to be forced off its schedule to clear.
+
+      # The tag this created, if any. 3c publishes the image from here rather
+      # than from `on: release`: a tag pushed with GITHUB_TOKEN does not
+      # trigger another workflow, so a `release: published` trigger would
+      # never fire and the images would silently never be published.
+      - name: What happened
+        env:
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          PRS_CREATED: ${{ steps.release.outputs.prs_created }}
+        run: |
+          echo "release created: ${RELEASE_CREATED:-false} ${TAG_NAME:-}"
+          echo "release PR open: ${PRS_CREATED:-false}"

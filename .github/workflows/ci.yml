@@ -44,6 +44,12 @@ jobs:
       - name: every dependency is pinned and visible to Renovate
         run: node scripts/check-pins.mjs
 
+      # The title check itself runs in pr-title.yml, which is triggered by a
+      # title edit as well as by a push. Its test runs here so a push straight
+      # to main is covered too, and so both guards are proven in one place.
+      - name: title guard is honest
+        run: node scripts/check-pr-title.test.mjs
+
       - name: actionlint
         uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:

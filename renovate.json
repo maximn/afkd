@@ -4,6 +4,7 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "semanticCommits": "enabled",
   "customManagers": [
     {
       "customType": "regex",
@@ -31,12 +32,13 @@
   ],
   "packageRules": [
     {
-      "description": "One grouped PR a week for the image toolchain rather than a PR per release - claude-code alone ships most days.",
+      "description": "One grouped PR a week for the image toolchain rather than a PR per release - claude-code alone ships most days. Typed build, not chore: these bumps change what is inside the published image, so they belong in the changelog and should cut a release. config:recommended's :semanticPrefixFixDepsChoreOthers types everything here chore, which release-please hides.",
       "matchManagers": [
         "custom.regex",
         "dockerfile"
       ],
       "groupName": "image toolchain",
+      "semanticCommitType": "build",
       "schedule": [
         "before 6am on monday"
       ]
@@ -70,6 +72,7 @@
         "github-actions"
       ],
       "groupName": "github actions",
+      "semanticCommitType": "chore",
       "schedule": [
         "before 6am on monday"
       ]
