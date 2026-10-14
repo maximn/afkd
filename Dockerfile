@@ -124,7 +124,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # between rebuilds instead of between commits. oh-my-zsh ships no tags, so the
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
-ARG OMZ_REF=48feb570f7b7d80cc7554629ba428c520ea8a3d5
+ARG OMZ_REF=964ddf789b022b6958b27d02d7fa54f552de21e9
 RUN mkdir -p /root/.omz-git \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
          -o /root/.omz-git/lib-git.zsh \
@@ -143,7 +143,7 @@ RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
     && rm /tmp/starship-install.sh
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
-ARG GIT_SPICE_VERSION=0.31.2
+ARG GIT_SPICE_VERSION=0.32.0
 # git-spice and herdr both name their assets with the uname spelling
 # (x86_64/aarch64) rather than the Docker one, hence the mapping. Anything
 # unmapped is a hard error here rather than a 404 three commands later.
@@ -158,7 +158,7 @@ RUN case "${TARGETARCH}" in \
 
 # herdr is pre-1.0 and ships stable releases weekly.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
-ARG HERDR_VERSION=0.9.3
+ARG HERDR_VERSION=0.9.4
 RUN case "${TARGETARCH}" in \
       amd64) uarch=x86_64 ;; \
       arm64) uarch=aarch64 ;; \
@@ -173,7 +173,7 @@ RUN case "${TARGETARCH}" in \
 # renovate: datasource=npm depName=@openai/codex
 ARG CODEX_VERSION=0.162.1
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.296
+ARG CLAUDE_CODE_VERSION=2.1.299
 RUN npm install -g \
       "@openai/codex@${CODEX_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
