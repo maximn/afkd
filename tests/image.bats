@@ -31,7 +31,9 @@ dockerfile_arg() {
   for tool in git gh tmux zsh jq rg fdfind curl wget python3 make htop \
     fzf starship glow git-spice gs herdr claude codex \
     mise node npm npx corepack yarn pnpm \
-    t h cc ch; do
+    vi vim editor man gcc g++ pkg-config \
+    dig ping nc lsof strace file tree rsync xz zip ssh \
+    t h; do
     run in_box sh -c "command -v $tool"
     [ "$status" -eq 0 ] || {
       echo "missing from image: $tool"
@@ -149,6 +151,67 @@ dockerfile_arg() {
     && npm install -g /tmp/probe >/dev/null 2>&1 && probe-cli'
   [ "$status" -eq 0 ]
   [ "$output" = "probe ok" ]
+}
+
+# git, gh, git-spice, crontab and the agents' "open in editor" all reach for
+# an editor, falling back to `vi` when none is set -- and the image had none,
+# so every one of them failed. Resolved the way git does, so the assertion
+# follows whatever git would actually launch.
+@test "has an editor that git can launch" {
+  run in_box zsh -c 'editor="$(git var GIT_EDITOR)" && command -v "${editor%% *}"'
+  [ "$status" -eq 0 ]
+
+  run in_box zsh -c 'echo "$EDITOR|$VISUAL"'
+  [ "$output" = "vim|vim" ]
+}
+
+# `man` existing is not the point: a base whose dpkg excludes strip
+# /usr/share/man installs it with nothing to read.
+@test "man pages are installed, not stripped" {
+  run in_box man -w git
+  [ "$status" -eq 0 ]
+  [[ "$output" == /usr/share/man/* ]]
+}
+
+# bin/cc is the laptop-side helper that ssh-es to the box. It used to be
+# copied in as /usr/local/bin/cc, ahead of /usr/bin on PATH, so every `make`
+# and node-gyp build on the box tried to ssh to a host called "cc".
+@test "cc is the C compiler, not the laptop helper" {
+  run in_box sh -c 'cc --version'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Free Software Foundation"* ]]
+
+  run in_box sh -c 'ls /usr/local/bin/cc /usr/local/bin/ch 2>/dev/null'
+  [ -z "$output" ]
+}
+
+# Native code is what agents hit in real repos: a Rust crate with openssl-sys,
+# a Python sdist, an npm module with a binding.gyp. Linked through pkg-config
+# against the headers the image ships, which is how those builds find them.
+@test "compiles and links C against the shipped headers" {
+  run in_box sh -c 'cd "$(mktemp -d)" \
+    && printf "%s\n" "#include <openssl/ssl.h>" "#include <zlib.h>" "#include <ffi.h>" \
+         "#include <stdio.h>" \
+         "int main(void) { printf(\"%s %s\\n\", OPENSSL_VERSION_TEXT, zlibVersion()); return 0; }" > t.c \
+    && cc t.c $(pkg-config --cflags --libs openssl zlib libffi) -o t && ./t'
+  [ "$status" -eq 0 ]
+  [[ "$output" == OpenSSL* ]]
+}
+
+# The case that motivated the toolchain: `npm install` on a package with a
+# binding.gyp runs node-gyp, which needs a compiler, make and python. Pointed
+# at the installed Node's own headers so the case needs no download.
+@test "builds a native npm module" {
+  run in_box zsh -c 'cd "$(mktemp -d)" \
+    && printf "%s" "{\"name\":\"native-probe\",\"version\":\"1.0.0\",\"main\":\"build/Release/probe.node\"}" > package.json \
+    && printf "%s" "{\"targets\":[{\"target_name\":\"probe\",\"sources\":[\"probe.c\"]}]}" > binding.gyp \
+    && printf "%s\n" "#include <node_api.h>" \
+         "static napi_value Init(napi_env env, napi_value exports) { return exports; }" \
+         "NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)" > probe.c \
+    && npm_config_nodedir="$(dirname "$(dirname "$(mise which node)")")" npm install --no-audit --no-fund >/dev/null 2>&1 \
+    && node -e "require(\".\"); console.log(\"native ok\")"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "native ok" ]
 }
 
 # In production /root/.local/share and /root/.cache are volumes, and Docker
