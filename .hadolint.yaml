@@ -1,7 +1,7 @@
 # DL3008: "pin versions in apt-get install".
 # Deliberately ignored -- Debian removes superseded versions from the archive,
 # so a pinned apt version breaks the build the day it rolls. The versions that
-# matter (fzf, starship, git-spice, herdr, the npm CLIs) are pinned as ARGs and
+# matter (fzf, starship, git-spice, herdr, the agents) are pinned as ARGs and
 # bumped by Renovate. The same reasoning is written into the Dockerfile.
 #
 # DL4001: "either use wget or curl, but not both".

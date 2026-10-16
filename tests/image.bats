@@ -49,6 +49,60 @@ dockerfile_arg() {
   [[ "$output" == *"$want"* ]]
 }
 
+# Installed from Anthropic's apt repo rather than npm, so the agent no longer
+# needs Node and apt verifies the package signature. Asserted through dpkg:
+# a `claude` that merely exists could still be a stray npm or native install
+# shadowing the packaged one.
+@test "Claude Code comes from its apt package" {
+  run in_box sh -c 'dpkg -S "$(readlink -f "$(command -v claude)")"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == claude-code:* ]]
+}
+
+# The version is the image's to choose. A self-update would land on the
+# writable layer, drift from the pin, and vanish on the next redeploy.
+@test "Claude Code refuses to update itself" {
+  run in_box claude update
+  [[ "$output" == *"disabled"* ]]
+}
+
+@test "installs the pinned Codex version" {
+  local want
+  want="$(dockerfile_arg CODEX_VERSION)"
+  [ -n "$want" ]
+
+  run in_box codex --version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$want"* ]]
+}
+
+# Codex is installed from its release package rather than the bare binary
+# because the package carries the ripgrep and bubblewrap it runs with. A
+# symlink that resolves but has lost its package around it still prints a
+# version, so the neighbours are checked directly.
+@test "Codex ships with its bundled helpers" {
+  run in_box sh -c 'dir="$(dirname "$(dirname "$(readlink -f "$(command -v codex)")")")"; \
+    test -x "$dir/codex-path/rg" && test -x "$dir/codex-resources/bwrap"'
+  [ "$status" -eq 0 ]
+}
+
+# The bare install already refuses `codex update` (it cannot tell how it was
+# installed), but the startup check would still offer one on every launch.
+# Read off doctor's effective config, which reports `true` without the system
+# file.
+@test "Codex does not check for updates on startup" {
+  run in_box sh -c 'codex doctor 2>&1'
+  grep -qE 'startup update check +false' <<<"$output"
+}
+
+# Neither agent is installed through npm any more; a leftover global install
+# would shadow the pinned one depending on PATH order.
+@test "no agent is installed through npm" {
+  run in_box sh -c 'npm ls -g --depth=0 2>/dev/null'
+  [[ "$output" != *"@anthropic-ai/claude-code"* ]]
+  [[ "$output" != *"@openai/codex"* ]]
+}
+
 @test "installs the pinned fzf version" {
   local want
   want="$(dockerfile_arg FZF_VERSION)"
