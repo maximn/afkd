@@ -1,0 +1,9 @@
+# Copied to /etc/mise/config.toml by the Dockerfile: mise's system config, the
+# lowest-precedence layer, so a user's ~/.config/mise or a project's own
+# mise.toml always wins. The Dockerfile appends the default [tools] table, so
+# the Node version stays next to its Renovate annotation.
+
+[settings]
+# Off by default in mise. These are the files projects actually carry, and
+# reading them needs no `mise trust`: they can name a version and nothing else.
+idiomatic_version_file_enable_tools = ["node", "python"]

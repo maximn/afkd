@@ -114,13 +114,33 @@ export function check(src, renovateJson) {
   }
 
   // --- rules 4-7: how things are fetched -----------------------------------
+  // An image is pinned by tag *and* digest: the tag is what Renovate reads and
+  // a human can, the digest is what makes it the same bytes on every build --
+  // a tag can be re-pushed. The tag is looked for after the last `/`, so a
+  // registry port (host:5000/img) does not pass for one.
+  const stages = new Set()
+  const checkImage = (start, kind, ref) => {
+    const [nameTag, digest] = ref.split('@')
+    const tag = nameTag.slice(nameTag.lastIndexOf('/') + 1).split(':')[1]
+    if (!tag || tag === 'latest') {
+      problem(start, `${kind} '${ref}' is untagged or :latest`,
+        'pin an explicit version tag so Renovate can track it')
+    } else if (!/^sha256:[0-9a-f]{64}$/.test(digest ?? '')) {
+      problem(start, `${kind} '${ref}' has no digest`,
+        'append @sha256:<index digest> (docker buildx imagetools inspect <ref>)')
+    }
+  }
+
   for (const { start, text, above } of blocks) {
     if (/^FROM /.test(text)) {
-      const ref = text.split(/\s+/)[1] ?? ''
-      if (!ref.includes(':') || /:latest\b/.test(ref)) {
-        problem(start, `base image '${ref}' is untagged or :latest`,
-          'pin an explicit version tag so Renovate can track it')
-      }
+      const [, ref = '', as, stage] = text.split(/\s+/)
+      checkImage(start, 'base image', ref)
+      if (/^as$/i.test(as ?? '') && stage) stages.add(stage)
+      continue
+    }
+    if (/^COPY /.test(text)) {
+      const from = /--from=(\S+)/.exec(text)?.[1]
+      if (from && !stages.has(from) && !/^\d+$/.test(from)) checkImage(start, 'COPY --from image', from)
       continue
     }
     if (!/^RUN /.test(text)) continue
