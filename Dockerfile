@@ -136,6 +136,19 @@ ARG FZF_VERSION=0.74.4
 RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin
 
+# Markdown renderer for the terminal, so plans and READMEs an agent writes can
+# be read on the box instead of as raw markup. Pages through `less`.
+# renovate: datasource=github-releases depName=charmbracelet/glow extractVersion=^v(?<version>.+)$
+ARG GLOW_VERSION=3.0.0
+# glow mixes spellings: x86_64 like uname, but arm64 like Docker.
+RUN case "${TARGETARCH}" in \
+      amd64) garch=x86_64 ;; \
+      arm64) garch=arm64 ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/charmbracelet/glow/releases/download/v${GLOW_VERSION}/glow_${GLOW_VERSION}_Linux_${garch}.tar.gz" \
+      | tar -xz -C /usr/local/bin --strip-components=1 "glow_${GLOW_VERSION}_Linux_${garch}/glow"
+
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
 ARG STARSHIP_VERSION=1.26.0
 RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \

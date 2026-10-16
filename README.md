@@ -18,6 +18,7 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 | Shell | `zsh` + [starship](https://starship.rs), `fzf`, git aliases |
 | Git | `git`, `git-crypt`, `gh`, [git-spice](https://abhinav.github.io/git-spice/) |
 | Search | `ripgrep`, `fd`, `jq` |
+| Reading | [glow](https://github.com/charmbracelet/glow) (Markdown in the terminal) |
 | Access | `openssh-server` (key auth only), `xterm-ghostty` terminfo |
 
 Tool versions are pinned as build `ARG`s and bumped by Renovate, so an image can
