@@ -28,3 +28,8 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # explicitly rather than left to the `vi` fallback: Claude Code and Codex read
 # VISUAL/EDITOR themselves and have no fallback of their own.
 export EDITOR=vim VISUAL=vim
+
+# API keys and tokens forwarded from the container's environment, rebuilt by
+# the entrypoint on every boot. sshd starts each session with a clean
+# environment, so this is how they reach an ssh command or an agent at all.
+[[ -r /run/remote-claude/env.zsh ]] && source /run/remote-claude/env.zsh
