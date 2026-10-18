@@ -144,7 +144,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1 \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /run/sshd /root/.ssh \
+    && mkdir -p /run/sshd \
     && rm -f /etc/ssh/ssh_host_* \
     && chsh -s "$(which zsh)"
 
@@ -186,11 +186,11 @@ RUN curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o /etc/apt/keyr
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
 ARG OMZ_REF=964ddf789b022b6958b27d02d7fa54f552de21e9
-RUN mkdir -p /root/.omz-git \
+RUN mkdir -p /usr/local/share/remote-claude/zsh/omz \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
-         -o /root/.omz-git/lib-git.zsh \
+         -o /usr/local/share/remote-claude/zsh/omz/lib-git.zsh \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/plugins/git/git.plugin.zsh" \
-         -o /root/.omz-git/git.plugin.zsh
+         -o /usr/local/share/remote-claude/zsh/omz/git.plugin.zsh
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.5
@@ -347,7 +347,8 @@ RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
     && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
     && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
                  'permitrootlogin (without-password|prohibit-password)' \
-                 'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300'; do \
+                 'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300' \
+                 'authorizedkeysfile /etc/ssh/authorized_keys/%u'; do \
          grep -qE "^${kv}$" /tmp/sshd-effective.conf \
            || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
        done \
@@ -360,27 +361,15 @@ COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h
 RUN chmod +x /usr/local/bin/t /usr/local/bin/h
 
-COPY git-aliases.zsh /root/.git-aliases.zsh
-RUN cat > /root/.zshrc <<'ZSHRC'
-# The git plugin registers completions with compdef, so compinit runs first.
-autoload -Uz compinit && compinit -d /root/.zcompdump
-
-source /root/.omz-git/lib-git.zsh
-source /root/.omz-git/git.plugin.zsh
-
-# After the plugin, so the personal overrides win.
-source /root/.git-aliases.zsh
-
-# Interactive shells resolve tool versions on every prompt rather than through
-# the shims /etc/zsh/remote-claude.zshenv puts on PATH, which also applies a
-# trusted project's [env].
-eval "$(mise activate zsh)"
-eval "$(starship init zsh)"
-source <(fzf --zsh)
-eval "$(gs shell completion zsh)"
-
-cd ~/dev 2>/dev/null
-ZSHRC
+# The image's interactive shell setup, kept out of home: sourced from the
+# system zshrc, ahead of the user's own ~/.zshrc. That file is seeded from
+# /etc/skel -- which also keeps zsh's new-user wizard from ever running -- and
+# is the user's from then on.
+COPY git-aliases.zsh /usr/local/share/remote-claude/zsh/git-aliases.zsh
+COPY zsh/remote-claude.zshrc /etc/zsh/remote-claude.zshrc
+COPY zsh/skel.zshrc /etc/skel/.zshrc
+RUN echo 'source /etc/zsh/remote-claude.zshrc' >> /etc/zsh/zshrc \
+    && cp /etc/skel/.zshrc /root/.zshrc
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

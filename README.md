@@ -95,7 +95,7 @@ bats --print-output-on-failure tests/
 
 The suite boots the real image for every case, because each entrypoint bug this
 repo has shipped was only visible at runtime. `tests/entrypoint.bats` covers key
-installation, the `GITHUB_SSH_KEY` formats and `.zshenv` quoting;
+installation, the `GITHUB_SSH_KEY` formats and forwarded-env quoting;
 `tests/ssh.bats` proves a real login works; `tests/image.bats` checks the
 toolchain matches the pinned versions.
 

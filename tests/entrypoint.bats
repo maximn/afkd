@@ -43,21 +43,25 @@ teardown() {
   wait_ready
 }
 
-@test "installs every public key line with locked-down permissions" {
+# Written outside home, root-owned, and rewritten on every boot: sshd reads
+# keys from nowhere else (AuthorizedKeysFile), so dropping a key from
+# SSH_PUBLIC_KEYS revokes it on the next boot even once home is a volume that
+# would otherwise carry a stale authorized_keys forward.
+@test "installs every public key line into a root-owned file outside home" {
   start_box -e SSH_PUBLIC_KEYS="${PUBKEY}"$'\n'"ssh-ed25519 AAAAsecondkey other@host"
   wait_ready
 
-  run in_box wc -l /root/.ssh/authorized_keys
+  run in_box wc -l /etc/ssh/authorized_keys/root
   [[ "$output" == 2* ]]
 
-  run in_box grep -cF "$PUBKEY_BARE" /root/.ssh/authorized_keys
+  run in_box grep -cF "$PUBKEY_BARE" /etc/ssh/authorized_keys/root
   [ "$output" = "1" ]
 
-  run in_box stat -c '%a' /root/.ssh
-  [ "$output" = "700" ]
+  run in_box stat -c '%U %a' /etc/ssh/authorized_keys/root
+  [ "$output" = "root 644" ]
 
-  run in_box stat -c '%a' /root/.ssh/authorized_keys
-  [ "$output" = "600" ]
+  run in_box test -e /root/.ssh/authorized_keys
+  [ "$status" -ne 0 ]
 }
 
 # --- git identity ------------------------------------------------------------
@@ -67,11 +71,16 @@ teardown() {
     -e GIT_USER_NAME='Ada Lovelace' -e GIT_USER_EMAIL='ada@example.com'
   wait_ready
 
-  run in_box git config --global user.name
+  run in_box git config --system user.name
   [ "$output" = 'Ada Lovelace' ]
 
-  run in_box git config --global user.email
+  run in_box git config --system user.email
   [ "$output" = 'ada@example.com' ]
+
+  # System-level, so a ~/.gitconfig of the user's own still wins, and the
+  # deployment's identity never lands in home.
+  run in_box test -e /root/.gitconfig
+  [ "$status" -ne 0 ]
 }
 
 @test "leaves the git identity unset rather than inventing one" {
@@ -82,10 +91,10 @@ teardown() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box git config --global user.name
+  run in_box git config --system user.name
   [ "$status" -ne 0 ]
 
-  run in_box git config --global user.email
+  run in_box git config --system user.email
   [ "$status" -ne 0 ]
 
   run box_logs
@@ -96,10 +105,10 @@ teardown() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GIT_USER_NAME='Ada Lovelace'
   wait_ready
 
-  run in_box git config --global user.name
+  run in_box git config --system user.name
   [ "$output" = 'Ada Lovelace' ]
 
-  run in_box git config --global user.email
+  run in_box git config --system user.email
   [ "$status" -ne 0 ]
 
   run box_logs
@@ -112,18 +121,33 @@ teardown() {
 # strongest assertion available is that ssh-keygen can derive the matching
 # public key from the file the entrypoint wrote.
 
+# The key lives under /run, regenerated from the environment on every boot,
+# and is wired in through the system ssh_config.d -- so it never reaches home,
+# and ~/.ssh/config stays the user's own.
+GITHUB_KEY=/run/remote-claude/github_ed25519
+
+# What ssh would actually do for github.com, rather than what one file says:
+# `ssh -G` prints the configuration after every Include has been merged. Its
+# stderr goes: OpenSSH 10 warns there about a pty whenever stdin is not one.
+assert_ssh_uses_github_key() {
+  run in_box sh -c 'ssh -G github.com 2>/dev/null | grep -i "^identityfile "'
+  [ "$output" = "identityfile ${GITHUB_KEY}" ]
+}
+
 assert_github_key_usable() {
   # ssh-keygen echoes the comment stored in the private key, so compare the
   # type and blob only.
-  run in_box sh -c 'ssh-keygen -y -f /root/.ssh/github_ed25519 | cut -d" " -f1,2'
+  run in_box sh -c "ssh-keygen -y -f ${GITHUB_KEY} | cut -d' ' -f1,2"
   [ "$status" -eq 0 ]
   [ "$output" = "$PUBKEY_BARE" ]
 
-  run in_box stat -c '%a' /root/.ssh/github_ed25519
+  run in_box stat -c '%a' "$GITHUB_KEY"
   [ "$output" = "600" ]
 
-  run in_box grep -q 'IdentityFile /root/.ssh/github_ed25519' /root/.ssh/config
-  [ "$status" -eq 0 ]
+  assert_ssh_uses_github_key
+
+  run in_box sh -c 'ls /root/.ssh/github* 2>/dev/null'
+  [ -z "$output" ]
 }
 
 @test "accepts GITHUB_SSH_KEY as a raw PEM key" {
@@ -164,7 +188,7 @@ assert_github_key_usable() {
   wait_ready
   assert_github_key_usable
 
-  run in_box tail -c1 /root/.ssh/github_ed25519
+  run in_box tail -c1 "$GITHUB_KEY"
   [ -z "$output" ]
 }
 
@@ -184,7 +208,7 @@ assert_github_key_usable() {
   run box_logs
   [[ "$output" == *"warning: GITHUB_SSH_KEY"* ]]
 
-  run in_box test -e /root/.ssh/github_ed25519
+  run in_box test -e "$GITHUB_KEY"
   [ "$status" -ne 0 ]
 }
 
@@ -192,8 +216,8 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box test -e /root/.ssh/config
-  [ "$status" -ne 0 ]
+  run in_box sh -c 'ls /etc/ssh/ssh_config.d/*github* /root/.ssh/config 2>/dev/null'
+  [ -z "$output" ]
 }
 
 @test "boots with a usable GitHub key even with no network" {
@@ -209,21 +233,20 @@ assert_github_key_usable() {
   [[ "$output" == *"could not reach github.com"* ]]
 
   # Everything that does not need the network still has to have happened.
-  run in_box stat -c '%a' /root/.ssh/github_ed25519
+  run in_box stat -c '%a' "$GITHUB_KEY"
   [ "$output" = "600" ]
 
-  run in_box grep -q 'IdentityFile /root/.ssh/github_ed25519' /root/.ssh/config
-  [ "$status" -eq 0 ]
+  assert_ssh_uses_github_key
 }
 
-# --- .zshenv forwarding ------------------------------------------------------
+# --- env forwarding -----------------------------------------------------------
 
 # `docker exec` hands the exec'd process the container's own environment -- the
 # very `-e` values passed to `docker run`. Reading the variable back without
 # clearing it first asserts nothing about .zshenv: these three tests passed
 # with every `printf 'export ...'` line deleted from the entrypoint, which is
 # the exact regression (d432f20) they were written to guard. `env -u` clears
-# it, and zsh sources .zshenv on its own, so the explicit `source` can go too.
+# it, and every zsh sources /etc/zsh/zshenv, which reads the forwarded file.
 @test "round-trips env values containing spaces, quotes and metacharacters" {
   local awkward='a b "c" '"'"'d'"'"' $e `f` \g'
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY="$awkward"
@@ -252,11 +275,25 @@ assert_github_key_usable() {
     zsh -c 'printf "%s|%s" "$CLAUDE_CODE_USE_BEDROCK" "$CODEX_HOME"'
   [ "$output" = "1|/root/.codex" ]
 
-  run in_box grep -c 'GH_TOKEN' /root/.zshenv
+  run in_box grep -c 'GH_TOKEN' /run/remote-claude/env.zsh
   [ "$output" = "0" ]
 
-  run in_box stat -c '%a' /root/.zshenv
+  run in_box stat -c '%a' /run/remote-claude/env.zsh
   [ "$output" = "600" ]
+}
+
+# The forwarded values are API keys and tokens. Written under /run they are
+# rebuilt from the environment on every boot, so unsetting one on the
+# deployment removes it from the box -- and none of them is ever written to
+# home, which becomes a volume that would keep them.
+@test "keeps forwarded secrets out of home" {
+  local secret="sk-test-$RANDOM$RANDOM"
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY="$secret" \
+    -e GH_TOKEN="$secret" -e NTFY_URL=https://ntfy.example.com/c -e NTFY_TOKEN="$secret"
+  wait_ready
+
+  run in_box grep -rlF "$secret" /root
+  [ -z "$output" ]
 }
 
 # --- Claude Code settings ----------------------------------------------------
@@ -272,29 +309,84 @@ assert_github_key_usable() {
   [ "$status" -ne 0 ]
 }
 
-@test "merges notification hooks when NTFY_URL is set" {
+# The hooks are the deployment's, not the user's, so they live in Claude
+# Code's managed settings: rebuilt every boot, merged by Claude over whatever
+# the user has, and never written into home along with the token they carry.
+NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
+
+@test "writes notification hooks to managed settings when NTFY_URL is set" {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
     -e NTFY_URL=https://ntfy.example.com/claude -e NTFY_TOKEN=tk_test
   wait_ready
 
-  run in_box jq -re '.hooks.Notification[0].hooks[0].command' /root/.claude/settings.json
+  run in_box jq -re '.hooks.Notification[0].hooks[0].command' "$NTFY_SETTINGS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ntfy.example.com/claude"* ]]
   [[ "$output" == *"tk_test"* ]]
 
-  run in_box jq -re '.hooks.Stop[0].hooks[0].command' /root/.claude/settings.json
+  run in_box jq -re '.hooks.Stop[0].hooks[0].command' "$NTFY_SETTINGS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"turn complete"* ]]
 
-  # The merge must not clobber what was already there.
-  run in_box jq -e '.permissions.defaultMode' /root/.claude/settings.json
-  [ "$status" -eq 0 ]
-
-  # This file now holds a bearer token. authorized_keys, github_ed25519 and
-  # .zshenv have all had a mode assertion since the day they were written; the
-  # one file holding a token was the only one without, and it was 0644.
-  run in_box stat -c '%a' /root/.claude/settings.json
+  # It holds a bearer token. Every other secret file here has had a mode
+  # assertion since the day it was written.
+  run in_box stat -c '%a' "$NTFY_SETTINGS"
   [ "$output" = "600" ]
+
+  # The user's own settings stay untouched.
+  run in_box jq -e '.hooks' /root/.claude/settings.json
+  [ "$status" -ne 0 ]
+}
+
+@test "writes no notification hooks when NTFY_URL is unset" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box test -e "$NTFY_SETTINGS"
+  [ "$status" -ne 0 ]
+}
+
+# Older images merged the hooks into the user's settings.json on every boot,
+# token and all. A volume written by one still carries them: left there they
+# would fire twice -- once from there, once from managed settings -- and keep
+# the token in home. Only the entries this image wrote are removed.
+@test "removes notification hooks an older image merged into settings.json" {
+  local vol
+  vol="$(make_volume)"
+  docker run --rm -i --label "${LABEL}=1" -v "${vol}:/root/.claude" \
+    --entrypoint sh "$IMAGE" -c 'cat > /root/.claude/settings.json' <<'JSON'
+{
+  "permissions": {"defaultMode": "plan"},
+  "hooks": {
+    "Notification": [{"hooks": [{"type": "command",
+      "command": "jq -r .message | curl -s -H 'Authorization: Bearer tk_old' -H 'Title: Claude needs you' --data-binary @- https://ntfy.example.com/c"}]}],
+    "Stop": [
+      {"hooks": [{"type": "command",
+        "command": "curl -s -H 'Authorization: Bearer tk_old' -H 'Title: Claude finished' -d 'turn complete' https://ntfy.example.com/c"}]},
+      {"hooks": [{"type": "command", "command": "echo mine"}]}
+    ],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "echo also mine"}]}]
+  }
+}
+JSON
+
+  start_box -v "${vol}:/root/.claude" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box grep -c tk_old /root/.claude/settings.json
+  [ "$output" = "0" ]
+
+  run in_box jq -c '[.hooks.Stop[].hooks[].command]' /root/.claude/settings.json
+  [ "$output" = '["echo mine"]' ]
+
+  run in_box jq -e '.hooks.Notification' /root/.claude/settings.json
+  [ "$status" -ne 0 ]
+
+  run in_box jq -re '.hooks.PreToolUse[0].hooks[0].command' /root/.claude/settings.json
+  [ "$output" = "echo also mine" ]
+
+  run in_box jq -re '.permissions.defaultMode' /root/.claude/settings.json
+  [ "$output" = "plan" ]
 }
 
 @test "locks down settings.json even with no notification hooks" {
@@ -347,7 +439,7 @@ STUB
 }
 
 stop_hook_command() {
-  in_box jq -re '.hooks.Stop[0].hooks[0].command' /root/.claude/settings.json
+  in_box jq -re '.hooks.Stop[0].hooks[0].command' "$NTFY_SETTINGS"
 }
 
 # The payloads write a file rather than echo a word: the word would also

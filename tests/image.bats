@@ -277,14 +277,38 @@ dockerfile_arg() {
   [[ "$output" == *"$want"* ]]
 }
 
+# An interactive shell, the way a login gets one: /etc/zsh/zshrc and then
+# ~/.zshrc. `zsh -i` is what makes zsh read rc files at all; its stray
+# terminal chatter is dropped so only the probe's output is compared.
+interactive() {
+  in_box zsh -ic "$1" 2>/dev/null
+}
+
 @test "root logs into zsh with the shell config sourced" {
   run in_box getent passwd root
   [[ "$output" == *"zsh"* ]]
 
-  run in_box grep -q 'source /root/.git-aliases.zsh' /root/.zshrc
+  run interactive 'alias gst'
   [ "$status" -eq 0 ]
+  [[ "$output" == *"git status"* ]]
+}
 
-  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; alias gst'
+# The image's shell config lives under /etc and /usr/local/share, sourced from
+# the system zshrc. Home is about to become a volume, and a volume keeps
+# whatever it was first seeded with: config living there would stop receiving
+# image updates on the first deploy.
+@test "keeps image-owned shell config out of home" {
+  run in_box sh -c 'ls -d /root/.omz-git /root/.git-aliases.zsh 2>/dev/null'
+  [ -z "$output" ]
+}
+
+# ~/.zshrc is the user's to edit. Whatever is in it -- here, nothing of the
+# image's at all -- the image's config still arrives.
+@test "a ~/.zshrc of the user's own still gets the image's shell config" {
+  in_box sh -c 'cp /root/.zshrc /tmp/zshrc.bak && echo "# mine" > /root/.zshrc'
+
+  run interactive 'alias gst'
+  in_box sh -c 'mv /tmp/zshrc.bak /root/.zshrc'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git status"* ]]
 }
@@ -299,9 +323,9 @@ dockerfile_arg() {
   want="$(dockerfile_arg OMZ_REF)"
   [[ "$want" =~ ^[0-9a-f]{40}$ ]]
 
-  run in_box test -s /root/.omz-git/lib-git.zsh
+  run in_box test -s /usr/local/share/remote-claude/zsh/omz/lib-git.zsh
   [ "$status" -eq 0 ]
-  run in_box test -s /root/.omz-git/git.plugin.zsh
+  run in_box test -s /usr/local/share/remote-claude/zsh/omz/git.plugin.zsh
   [ "$status" -eq 0 ]
 }
 
@@ -310,15 +334,15 @@ dockerfile_arg() {
 # loaded". gcm is the one deliberate divergence and is sourced after the
 # plugin, so it has to win.
 @test "loads the git plugin, with the local overrides winning" {
-  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; alias gwip'
+  run interactive 'alias gwip'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git add -A"* ]]
 
-  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; type git_main_branch'
+  run interactive 'type git_main_branch'
   [ "$status" -eq 0 ]
   [[ "$output" == *"function"* ]]
 
-  run in_box zsh -c 'source /root/.zshrc >/dev/null 2>&1; alias gcm'
+  run interactive 'alias gcm'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git checkout main"* ]]
 }
@@ -346,7 +370,8 @@ dockerfile_arg() {
     'permitemptypasswords no' \
     'permitrootlogin (without-password|prohibit-password)' \
     'x11forwarding no' 'maxauthtries 4' \
-    'clientaliveinterval 300' 'clientalivecountmax 2'; do
+    'clientaliveinterval 300' 'clientalivecountmax 2' \
+    'authorizedkeysfile /etc/ssh/authorized_keys/%u'; do
     grep -qE "^${kv}$" <<<"$output" || {
       echo "not in effect: $kv"
       false
