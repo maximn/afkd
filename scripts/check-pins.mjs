@@ -141,15 +141,31 @@ export function check(src, renovateJson) {
       }
     }
 
+    // rule 5: an apt version pin comes from an annotated ARG. Most apt
+    // packages are deliberately unpinned (Debian drops superseded versions),
+    // so a pin is only ever an explicit choice -- and a literal one is a
+    // version Renovate cannot see.
+    const apt = /apt-get install (.+?)(?: && | ; |$)/.exec(text)
+    if (apt) {
+      for (const token of apt[1].split(/\s+/)) {
+        const pkg = token.replace(/["']/g, '')
+        if (pkg.startsWith('-') || !pkg.includes('=')) continue
+        if (!/\$\{?\w*VERSION/.test(pkg)) {
+          problem(start, `apt package '${pkg}' is pinned to a literal version`,
+            'pin it to an ARG: "pkg=${PKG_VERSION}-<rev>", with a # renovate: annotation')
+        }
+      }
+    }
+
     if (ignored) continue
 
-    // rule 5: nothing resolves "latest" at build time
+    // rule 6: nothing resolves "latest" at build time
     if (/releases\/latest|\/latest\/download/.test(text)) {
       problem(start, 'fetches a "latest" release URL, so the image changes without a commit',
         'pin the version in an ARG and build the URL from it')
     }
 
-    // rule 6: every download interpolates a pinned version. Matched as a
+    // rule 7: every download interpolates a pinned version. Matched as a
     // command (followed by a flag or URL) rather than bare, so the `curl \
     // wget \` package names in the apt block don't count as downloads.
     if (/\b(curl|wget)\s+(-|https?:)/.test(text) && !/\$\{?\w*(?:VERSION|REF)/.test(text)) {

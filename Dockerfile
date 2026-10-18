@@ -107,6 +107,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -f /etc/ssh/ssh_host_* \
     && chsh -s "$(which zsh)"
 
+# Claude Code's apt repo, so the agent arrives as a signed package rather than
+# through npm. The key is fetched over TLS and then held to the fingerprint
+# Anthropic publishes (code.claude.com/docs/en/setup), because apt trusts every
+# key in a signed-by file: the count check stops a second key riding along in
+# the same download. gpg's output is captured first and every filter reads all
+# of it: a `grep -q` or an awk `exit` stops reading early, and the writer then
+# dies of SIGPIPE and fails the pipeline under pipefail.
+# pin-check: ignore - a signing key, held to a pinned fingerprint
+RUN curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o /etc/apt/keyrings/claude-code.asc \
+    && gnupg_home="$(mktemp -d)" \
+    && keys="$(gpg --homedir "$gnupg_home" --show-keys --with-colons /etc/apt/keyrings/claude-code.asc)" \
+    && rm -rf "$gnupg_home" \
+    && if [ "$(printf '%s\n' "$keys" | grep -c '^pub:')" != 1 ] \
+          || [ "$(printf '%s\n' "$keys" | awk -F: '/^fpr:/ && !seen++ { print $10 }')" != 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE ]; then \
+         echo "claude-code.asc is not Anthropic's release signing key" >&2; exit 1; \
+       fi \
+    && chmod 644 /etc/apt/keyrings/claude-code.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/latest latest main" \
+       > /etc/apt/sources.list.d/claude-code.list
+
 # Everything below is version-pinned rather than fetched as :latest, so the
 # image only changes when a commit changes it and any build can be reproduced
 # from its SHA. Renovate owns the bumps via the annotations. Each ARG sits
@@ -181,25 +201,59 @@ RUN case "${TARGETARCH}" in \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
-# Last of the installs: these two publish most often, so keep the layers
-# they invalidate to a minimum.
-# renovate: datasource=npm depName=@openai/codex
-ARG CODEX_VERSION=0.162.1
-# renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.299
-RUN npm install -g \
-      "@openai/codex@${CODEX_VERSION}" \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
 # npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
 # writable layer and so is thrown away on every redeploy. /root/.cache is a
 # volume, so point npm at it -- but via npmrc rather than NPM_CONFIG_CACHE,
 # because sshd builds a fresh environment per session and container ENV never
 # reaches an SSH login (the same reason entrypoint.sh writes /root/.zshenv).
-# The clean runs first and against the *default* cache, so the build's own
-# tarballs are dropped instead of being baked under the volume's mount path,
-# where Docker would seed them into the empty volume on first deploy.
-    && npm cache clean --force \
-    && npm config set cache /root/.cache/npm --global
+RUN npm config set cache /root/.cache/npm --global
+
+# Each agent's own update mechanism is switched off in a system-level file
+# rather than through ENV, which never reaches an SSH login. Left on, they
+# update themselves on the container's writable layer: the box drifts from the
+# pinned version and drifts back on the next redeploy.
+COPY claude-code/managed-settings.json /etc/claude-code/managed-settings.json
+COPY codex/config.toml /etc/codex/config.toml
+
+# Last of the installs: these two publish most often, so keep the layers
+# they invalidate to a minimum.
+#
+# Codex comes from its release *package* rather than the bare binary: the
+# package carries the ripgrep and bubblewrap Codex runs with, and is the layout
+# upstream's own installer unpacks and links to. The checksum file is from the
+# same release, so this proves the download is the one published rather than
+# authenticating the publisher -- the same bar the other release assets here
+# are held to. The hash is looked up rather than piped through `sha256sum -c`
+# against a grep: a filename that matches nothing would hand -c an empty list,
+# so an empty lookup is refused explicitly.
+# renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>\d+\.\d+\.\d+)$
+ARG CODEX_VERSION=0.162.1
+RUN case "${TARGETARCH}" in \
+      amd64) triple=x86_64-unknown-linux-musl ;; \
+      arm64) triple=aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac \
+    && release="https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}" \
+    && package="codex-package-${triple}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${package}" -o "${tmp}/${package}" \
+    && want="$(curl -fsSL "${release}/codex-package_SHA256SUMS" | awk -v f="${package}" '$2 == f { print $1 }')" \
+    && [ -n "${want}" ] \
+    && echo "${want}  ${tmp}/${package}" | sha256sum -c --quiet - \
+    && mkdir -p /opt/codex \
+    && tar -xzf "${tmp}/${package}" -C /opt/codex \
+    && ln -sf /opt/codex/bin/codex /usr/local/bin/codex \
+    && rm -rf "${tmp}"
+
+# The exact package revision is pinned along with the version: every release
+# in the repo so far is -1, and a rebuilt -2 should arrive as a reviewed bump
+# rather than silently under an unchanged pin. Renovate reads the version from
+# npm, where Anthropic publishes the same numbers.
+# renovate: datasource=npm depName=@anthropic-ai/claude-code
+ARG CLAUDE_CODE_VERSION=2.1.299
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends "claude-code=${CLAUDE_CODE_VERSION}-1" \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY ghostty.terminfo /tmp/ghostty.terminfo
 RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
