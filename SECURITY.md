@@ -41,8 +41,8 @@ Design decisions that follow from that:
   given `SYS_ADMIN`, `/dev/fuse` and `apparmor:unconfined`; those were for the
   Browserless/Playwright wiring the image no longer installs, and a capability
   nothing uses only widens what a compromise reaches. The only Docker option
-  the image still wants is a raised `nofile`, which is a limit rather than a
-  privilege. It is still not a sandbox: anyone who can log in has full control
+  the image still wants is a raised `nofile` (set in `docker-compose.yaml`),
+  which is a limit rather than a privilege. It is still not a sandbox: anyone who can log in has full control
   of the container, through `sudo`. Don't expose port 22 to the internet without a firewall,
   and don't share a box with people you wouldn't hand those credentials to.
 - **Agent permissions** are seeded in `~/.claude/settings.json` with a small

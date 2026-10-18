@@ -1,0 +1,41 @@
+# The whole deployment: Coolify's Docker Compose build pack reads this file,
+# and so does a plain `docker compose up`. Ports, volumes and the fd limit live
+# here rather than in a host's UI, where recreating the app silently drops them.
+#
+# Every ${VAR} below shows up in Coolify's Environment Variables, so the
+# variables the image reads are listed there before anyone has to look them up.
+# `:?` makes one required -- Coolify refuses to deploy until it is set. `:-`
+# marks the rest optional without Compose warning about each unset one; they
+# reach the container as empty strings, which the entrypoint treats as unset.
+# .env.example says what each one is for.
+services:
+  remote-claude:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${SSH_PORT:-2222}:22"
+    # 1024 descriptors is fine for shell sessions but not for a JetBrains
+    # backend, which opens far more than that while indexing.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      SSH_PUBLIC_KEYS: ${SSH_PUBLIC_KEYS:?one SSH public key per line}
+      GIT_USER_NAME: ${GIT_USER_NAME:-}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      GITHUB_SSH_KEY: ${GITHUB_SSH_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      NTFY_URL: ${NTFY_URL:-}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+    volumes:
+      - home:/home/dev
+      - cache:/home/dev/.cache
+      - system:/var/lib/remote-claude
+
+volumes:
+  home:
+  cache:
+  system:

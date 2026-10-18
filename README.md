@@ -33,15 +33,19 @@ build the day it rolls.
 
 ## Deploy
 
-The image is built from the `Dockerfile` at the repo root and needs a container
-host that can mount volumes and publish port 22. See [coolify.md](coolify.md)
-for a full Coolify setup: env vars, volumes, port mapping and healthcheck.
+[docker-compose.yaml](docker-compose.yaml) is the whole deployment: the image,
+the published port, the three volumes and the fd limit. See
+[coolify.md](coolify.md) for running it on Coolify.
 
-Minimum to boot:
+```bash
+SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" docker compose up -d
+```
+
+Or without Compose:
 
 ```bash
 docker build -t remote-claude-code .
-docker run -d -p 2222:22 \
+docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
   -e SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
   -v rcc-home:/home/dev \
   -v rcc-cache:/home/dev/.cache \
@@ -104,8 +108,10 @@ The suite boots the real image for every case, because each entrypoint bug this
 repo has shipped was only visible at runtime. `tests/entrypoint.bats` covers key
 installation, the `GITHUB_SSH_KEY` formats and forwarded-env quoting;
 `tests/ssh.bats` proves a real login works; `tests/migrate.bats` runs
-`rcc-migrate` against volumes laid out the way root-era images left them; `tests/image.bats` checks the
-toolchain matches the pinned versions.
+`rcc-migrate` against volumes laid out the way root-era images left them;
+`tests/compose.bats` boots `docker-compose.yaml` and checks it declares every
+variable the image reads; `tests/image.bats` checks the toolchain matches the
+pinned versions.
 
 Linting: `shellcheck entrypoint.sh`, `zsh -n` for the `bin/` scripts (they're
 zsh, which shellcheck can't parse), and `hadolint` for the Dockerfile.

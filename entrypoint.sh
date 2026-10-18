@@ -171,6 +171,10 @@ fi
 # otherwise corrupt itself and every export after it. bash's %q output is
 # valid zsh, including the $'...' form it uses for newlines.
 #
+# Empty counts as unset. Compose hands a declared-but-unset ${VAR} to the
+# container as an empty string, and an empty GH_TOKEN or API key in every
+# session reads as a blank credential rather than none.
+#
 # Sourced by /etc/zsh/remote-claude.zshenv, which every zsh reads. Written
 # under a umask like the GitHub key above: this file holds GH_TOKEN and every
 # agent API key, and a plain redirect creates it 0644 and leaves it that way
@@ -180,7 +184,7 @@ FORWARDED_ENV="$RUNTIME_DIR/env.zsh"
 (umask 077
   for name in GH_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY \
               "${!CODEX_@}" "${!CLAUDE_@}"; do
-    [ -n "${!name+x}" ] || continue
+    [ -n "${!name:-}" ] || continue
     printf 'export %s=%q\n' "$name" "${!name}"
   done > "$FORWARDED_ENV"
 )
@@ -233,16 +237,17 @@ if [ -n "${NTFY_URL:-}" ]; then
   { chown root:dev "$NTFY_SETTINGS" && chmod 640 "$NTFY_SETTINGS"; } 2>/dev/null || true
 fi
 
-# nofile is raised through Coolify's Custom Docker Options, a hand-pasted field
-# that is lost whenever the app is recreated. A JetBrains backend then hits
-# EMFILE partway through indexing while the healthcheck (sshd is up) stays
-# green, so print the limit actually in effect where the container log shows it.
+# nofile is raised by docker-compose.yaml, which a host that runs the image
+# some other way -- a bare `docker run`, an older Dockerfile-based Coolify app --
+# does not read. A JetBrains backend then hits EMFILE partway through indexing
+# while the healthcheck (sshd is up) stays green, so print the limit actually in
+# effect where the container log shows it.
 fd_limit="$(ulimit -n)"
 case "$fd_limit" in
   '' | *[!0-9]*) echo "nofile limit: ${fd_limit}" ;;  # "unlimited"
   *)
     if [ "$fd_limit" -lt 4096 ]; then
-      echo "warning: nofile limit is ${fd_limit} - too low for a JetBrains backend. Check Custom Docker Options." >&2
+      echo "warning: nofile limit is ${fd_limit} - too low for a JetBrains backend. Run it with --ulimit nofile=65536:65536, as docker-compose.yaml does." >&2
     else
       echo "nofile limit: ${fd_limit}"
     fi
