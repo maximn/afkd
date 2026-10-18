@@ -210,7 +210,10 @@ RUN case "${TARGETARCH}" in \
 # picks its own version. The binary is the static one from mise's own image,
 # pinned by digest like the base.
 COPY --from=ghcr.io/jdx/mise:2026.10.11@sha256:22608f88ac10c74f541553f3e4e4dab6a79cdb9669da916f6e0804959348080a /usr/local/bin/mise /usr/local/bin/mise
-COPY mise/config.toml /etc/mise/config.toml
+# Not named config.toml in the repo: mise reads ./mise/config.toml as project
+# config, so every contributor running mise here got it as theirs -- an
+# untrusted-config error on every command, and once trusted, the image's Node.
+COPY mise/system.toml /etc/mise/config.toml
 
 # The shell-wide half of the setup lives in /etc/zsh, which every zsh reads --
 # an ssh command, an interactive login, an agent's own subshell. Image ENV
