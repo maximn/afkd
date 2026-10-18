@@ -16,9 +16,9 @@ credentials belong to.
 Design decisions that follow from that:
 
 - **Key-based SSH only.** `sshd_config.d/99-remote-claude.conf` turns off
-  password and keyboard-interactive authentication and restricts root to
-  `prohibit-password`, and the build fails unless `sshd -T` confirms every one
-  of those took effect. The entrypoint refuses to boot with an empty
+  password and keyboard-interactive authentication and refuses root logins
+  outright, and the build fails unless `sshd -T` confirms every one of those
+  took effect. The entrypoint refuses to boot with an empty
   `SSH_PUBLIC_KEYS` rather than come up unreachable.
 - **Secrets are injected as environment variables**, never baked into the image
   or committed, and never written into home. The entrypoint rebuilds them on
@@ -31,15 +31,21 @@ Design decisions that follow from that:
 - **Authorized keys come only from `SSH_PUBLIC_KEYS`.** sshd reads a root-owned
   file the entrypoint rewrites on every boot, never `~/.ssh/authorized_keys`,
   so a key dropped from the deployment stops working on the next boot.
-- **The container runs as root, with no added capabilities.** It used to be
+- **Sessions run as `dev`, not root.** It has passwordless `sudo`, so this is
+  not a privilege boundary -- the box is single-user and dev is that user. What
+  it buys is an agent that runs unattended without Claude Code's root guard
+  in the way, and projects whose files are not root's. The SSH host keys live
+  on their own volume, readable by root alone; secrets under
+  `/run/remote-claude` are dev's, in a directory only root can write to.
+- **The container has no added capabilities.** It used to be
   given `SYS_ADMIN`, `/dev/fuse` and `apparmor:unconfined`; those were for the
   Browserless/Playwright wiring the image no longer installs, and a capability
   nothing uses only widens what a compromise reaches. The only Docker option
   the image still wants is a raised `nofile`, which is a limit rather than a
   privilege. It is still not a sandbox: anyone who can log in has full control
-  of the container. Don't expose port 22 to the internet without a firewall,
+  of the container, through `sudo`. Don't expose port 22 to the internet without a firewall,
   and don't share a box with people you wouldn't hand those credentials to.
-- **Agent permissions** are seeded in `/root/.claude/settings.json` with a small
+- **Agent permissions** are seeded in `~/.claude/settings.json` with a small
   deny list. That is a convenience, not a security boundary.
 
 ## Scope

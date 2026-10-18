@@ -15,6 +15,8 @@ teardown() {
   cleanup_box
 }
 
+# SSH_USER picks who logs in; every case but the root one is dev, the only
+# account sshd lets through.
 ssh_box() {
   ssh -i "$KEYFILE" -p "$(host_port)" \
     -o StrictHostKeyChecking=no \
@@ -23,7 +25,7 @@ ssh_box() {
     -o ConnectTimeout=5 \
     -o LogLevel=ERROR \
     -o IdentitiesOnly=yes \
-    root@127.0.0.1 "$@"
+    "${SSH_USER:-dev}@127.0.0.1" "$@"
 }
 
 wait_ssh() {
@@ -47,6 +49,41 @@ wait_ssh() {
   run ssh_box 'echo connected'
   [ "$status" -eq 0 ]
   [ "$output" = "connected" ]
+}
+
+# Claude Code refuses --dangerously-skip-permissions as root, and every tool
+# that writes into a project wrote root-owned files. A session is dev's.
+@test "logs in as the unprivileged dev user" {
+  start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+  wait_ssh
+
+  run ssh_box 'id -un; id -u; echo "$HOME"'
+  [ "$status" -eq 0 ]
+  [ "$output" = $'dev\n1000\n/home/dev' ]
+}
+
+# Root by key was the only way in before; now nothing should log in as root,
+# not even the key that gets dev in. Administration goes through sudo.
+@test "refuses root even with an authorized key" {
+  start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+  wait_ssh
+
+  SSH_USER=root wait_auth_refusal
+}
+
+# The box is still single-user and the user still owns it: apt, the
+# migration, anything else under /etc. sudo is how, without a password,
+# since none is ever set.
+@test "dev can sudo without a password" {
+  start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+  wait_ssh
+
+  run ssh_box 'sudo -n id -un'
+  [ "$status" -eq 0 ]
+  [ "$output" = "root" ]
 }
 
 # wait_ready only polls for the sshd *process*, which execs before it binds, so
@@ -80,14 +117,14 @@ wait_auth_refusal() {
   wait_auth_refusal
 }
 
-# Home is becoming a volume, and a volume outlives every key rotation. A key
+# Home is a volume, and a volume outlives every key rotation. A key
 # that once made it into ~/.ssh/authorized_keys -- written by an older image,
 # or added by hand -- must not keep working after it leaves SSH_PUBLIC_KEYS:
 # sshd reads the root-owned file the entrypoint rebuilds, and nothing in home.
 @test "ignores a key left behind in ~/.ssh/authorized_keys" {
   start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="ssh-ed25519 AAAAnotyourkey nobody@nowhere"
   wait_ready
-  in_box sh -c "mkdir -p /root/.ssh && printf '%s\n' '$PUBKEY' > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"
+  as_dev sh -c "mkdir -p ~/.ssh && printf '%s\n' '$PUBKEY' > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 
   wait_auth_refusal
 }
@@ -106,20 +143,24 @@ wait_auth_refusal() {
 }
 
 @test "persists the ssh host key across container replacement" {
-  # Redeploys must not trip REMOTE HOST IDENTIFICATION HAS CHANGED.
-  CONFIG_VOL="$(make_volume)"
+  # Redeploys must not trip REMOTE HOST IDENTIFICATION HAS CHANGED. The keys
+  # live on the system volume, so this reuses that one alone: a fresh home
+  # must not cost the box its identity.
+  SYSTEM_VOL="$(make_volume)"
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
   local before
-  before="$(in_box ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
+  before="$(in_box ssh-keygen -lf /var/lib/remote-claude/ssh/ssh_host_ed25519_key.pub)"
 
   docker rm -f "$BOX" >/dev/null
   BOX=""
+  HOME_VOL=""
+  CACHE_VOL=""
 
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
   local after
-  after="$(in_box ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub)"
+  after="$(in_box ssh-keygen -lf /var/lib/remote-claude/ssh/ssh_host_ed25519_key.pub)"
 
   [ -n "$before" ]
   [ "$before" = "$after" ]

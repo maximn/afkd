@@ -86,7 +86,7 @@ jobs:
       # covering the next script someone adds, and this one had already missed
       # tests/helpers.bash.
       - name: shellcheck
-        run: shellcheck entrypoint.sh tests/*.bash
+        run: shellcheck ./*.sh tests/*.bash
 
       - name: Install zsh
         run: sudo apt-get update && sudo apt-get install -y zsh

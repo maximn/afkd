@@ -7,10 +7,13 @@
 Host cc
     HostName <server-ip>
     Port 2222
-    User root
+    User dev
     IdentityFile ~/.ssh/id_ed25519
     IdentitiesOnly yes
 ```
+
+`dev` is the only account that can log in; root is refused even with an
+authorized key. It has passwordless `sudo` for anything that needs root.
 
 `IdentitiesOnly yes` stops ssh offering every key in your agent before this
 one. The box allows four authentication attempts and each offered key spends
@@ -63,7 +66,7 @@ Detach from tmux with `Ctrl+b d` — the session keeps running. Reconnect anytim
 
 ## Troubleshooting
 
-If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" after recreating volumes:
+If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" after recreating the system volume:
 ```
 ssh-keygen -R '[<server-ip>]:2222'
 ```
