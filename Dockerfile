@@ -100,6 +100,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # keeps every package's man pages and nothing could read them.
     vim \
     man-db \
+# Every locale, precompiled. sshd accepts the client's LANG and LC_*, so a
+# session runs in the laptop's locale, and any the box lacks makes man, perl
+# and the rest warn "cannot set locale" on every run. Which locale arrives is
+# up to whoever connects, so generating a chosen few from `locales` would only
+# move the warning to the next person. ~230 MB, all of it on disk.
+    locales-all \
 # Native builds. Agents hit these in ordinary repos: an npm module with a
 # binding.gyp (node-gyp wants a compiler, make and python3), a Rust crate on
 # openssl-sys, a Python sdist with a C extension. pkg-config is how all three

@@ -16,9 +16,12 @@ teardown() {
 }
 
 # SSH_USER picks who logs in; every case but the root one is dev, the only
-# account sshd lets through.
+# account sshd lets through. SSH_SEND_ENV names variables to forward the way a
+# real client's SendEnv does; nothing is forwarded by default, so a test does
+# not depend on the locale of the machine running it.
 ssh_box() {
   ssh -i "$KEYFILE" -p "$(host_port)" \
+    ${SSH_SEND_ENV:+-o "SendEnv=$SSH_SEND_ENV"} \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o BatchMode=yes \
@@ -140,6 +143,27 @@ wait_auth_refusal() {
   run ssh_box 'printf %s "$ANTHROPIC_API_KEY"'
   [ "$status" -eq 0 ]
   [ "$output" = 'sk-test with spaces $and metachars' ]
+}
+
+# A client's ssh forwards LANG and LC_* (Debian's and macOS's defaults both
+# do) and sshd accepts them, so a session runs in whatever locale the laptop
+# is in. One the box lacks makes every locale-aware tool -- man, perl, git's
+# pager -- open with "cannot set locale" before doing its job.
+@test "a locale forwarded from the client is installed" {
+  start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+  wait_ssh
+
+  local lang
+  for lang in en_US.UTF-8 de_DE.UTF-8 ja_JP.UTF-8; do
+    LANG="$lang" SSH_SEND_ENV=LANG run ssh_box \
+      'printf "%s\n" "$LANG"; locale 2>&1 >/dev/null'
+    [ "$status" -eq 0 ]
+    [ "$output" = "$lang" ] || {
+      echo "LANG=$lang: $output"
+      false
+    }
+  done
 }
 
 @test "persists the ssh host key across container replacement" {
