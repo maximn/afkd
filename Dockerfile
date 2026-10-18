@@ -1,4 +1,8 @@
-FROM node:24.21.0-slim
+# A workstation, not a runtime: plain Debian stable, with languages layered on
+# top by mise rather than chosen by the base. Not -slim, whose dpkg excludes
+# strip man pages and docs from every package installed afterwards -- the right
+# trade for a service, the wrong one for a box people work on.
+FROM debian:trixie-20261005@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5
 
 # Most fetches below are `curl ... | tar`. Under the default `sh -c` a failed
 # download still exits 0 as long as tar is happy with the empty stream, so
@@ -26,8 +30,8 @@ ARG TARGETARCH
 
 # `(A || B && C)` groups as `(A || B) && C`, so with wget already present this
 # skipped apt-get update and ran the install against empty package lists. It is
-# latent only because node:*-slim purges wget in its own build; the day the base
-# image keeps it -- a Renovate bump away -- the short circuit goes live.
+# latent only because the base image ships no wget; the day it does -- a
+# Renovate bump away -- the short circuit goes live.
 #
 # The marker has to stay on the line directly above the RUN: check-pins reads
 # exactly one comment line back.
@@ -201,12 +205,44 @@ RUN case "${TARGETARCH}" in \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
-# npm ignores XDG on Linux and caches to ~/.npm, which is on the container's
-# writable layer and so is thrown away on every redeploy. /root/.cache is a
-# volume, so point npm at it -- but via npmrc rather than NPM_CONFIG_CACHE,
-# because sshd builds a fresh environment per session and container ENV never
-# reaches an SSH login (the same reason entrypoint.sh writes /root/.zshenv).
-RUN npm config set cache /root/.cache/npm --global
+# Language runtimes are per project, so they come from mise rather than from the
+# base image: a repo's .nvmrc, .node-version, .python-version or .tool-versions
+# picks its own version. The binary is the static one from mise's own image,
+# pinned by digest like the base.
+COPY --from=ghcr.io/jdx/mise:2026.10.11@sha256:22608f88ac10c74f541553f3e4e4dab6a79cdb9669da916f6e0804959348080a /usr/local/bin/mise /usr/local/bin/mise
+# Not named config.toml in the repo: mise reads ./mise/config.toml as project
+# config, so every contributor running mise here got it as theirs -- an
+# untrusted-config error on every command, and once trusted, the image's Node.
+COPY mise/system.toml /etc/mise/config.toml
+
+# The shell-wide half of the setup lives in /etc/zsh, which every zsh reads --
+# an ssh command, an interactive login, an agent's own subshell. Image ENV
+# reaches none of those, since sshd builds each session's environment from
+# scratch; it is set below only for what runs outside a login (docker exec,
+# the entrypoint).
+COPY zsh/remote-claude.zshenv /etc/zsh/remote-claude.zshenv
+RUN echo 'source /etc/zsh/remote-claude.zshenv' >> /etc/zsh/zshenv
+ENV PATH="/usr/local/share/mise/shims:${PATH}"
+
+# The default Node, for anything with no version file of its own. Installed
+# with --system into /usr/local/share/mise, so it belongs to the image like any
+# other binary here and no volume mounted over home can hide it; per-project
+# versions install into home on first use.
+#
+# corepack puts yarn and pnpm on PATH, each resolving to the version a
+# project's packageManager field names -- which a single global yarn, as the
+# node base image shipped, never could. Node stops bundling corepack from 25 on,
+# so a major bump fails right here rather than quietly dropping yarn.
+#
+# mise also writes download scratch under root's home. /root/.local/share and
+# /root/.cache are volumes in production, and Docker seeds an empty volume from
+# the image, so it is removed rather than left to land there.
+# renovate: datasource=node-version depName=node
+ARG NODE_VERSION=24.21.0
+RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
+    && mise install --system \
+    && corepack enable --install-directory /usr/local/bin yarn pnpm \
+    && rm -rf /root/.local/share/mise /root/.local/state/mise /root/.cache/mise
 
 # Each agent's own update mechanism is switched off in a system-level file
 # rather than through ENV, which never reaches an SSH login. Left on, they
@@ -297,6 +333,10 @@ source /root/.omz-git/git.plugin.zsh
 # After the plugin, so the personal overrides win.
 source /root/.git-aliases.zsh
 
+# Interactive shells resolve tool versions on every prompt rather than through
+# the shims /etc/zsh/remote-claude.zshenv puts on PATH, which also applies a
+# trusted project's [env].
+eval "$(mise activate zsh)"
 eval "$(starship init zsh)"
 source <(fzf --zsh)
 eval "$(gs shell completion zsh)"
