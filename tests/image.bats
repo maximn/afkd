@@ -30,6 +30,7 @@ dockerfile_arg() {
   local tool
   for tool in git gh tmux zsh jq rg fdfind curl wget python3 make htop \
     fzf starship glow git-spice gs herdr claude codex \
+    mise node npm npx corepack yarn pnpm \
     t h cc ch; do
     run in_box sh -c "command -v $tool"
     [ "$status" -eq 0 ] || {
@@ -101,6 +102,63 @@ dockerfile_arg() {
   run in_box sh -c 'npm ls -g --depth=0 2>/dev/null'
   [[ "$output" != *"@anthropic-ai/claude-code"* ]]
   [[ "$output" != *"@openai/codex"* ]]
+}
+
+@test "runs on Debian 13 (trixie)" {
+  run in_box sh -c '. /etc/os-release && echo "$VERSION_CODENAME"'
+  [ "$output" = "trixie" ]
+}
+
+# Node is no longer the base image's: mise installs it system-wide, outside
+# any home directory, so a volume over home cannot hide it. Asserted through
+# `zsh -c`, which reads /etc/zsh/zshenv the way an ssh command or an agent's
+# shell does, rather than through the image ENV that only docker exec sees.
+@test "provides the pinned Node to a non-interactive shell" {
+  local want
+  want="$(dockerfile_arg NODE_VERSION)"
+  [ -n "$want" ]
+
+  run in_box zsh -c 'node --version'
+  [ "$status" -eq 0 ]
+  [ "$output" = "v$want" ]
+}
+
+# The point of mise: a repo's .nvmrc picks its Node. Auto-install is off so
+# the case needs no network, and the second half proves the file is actually
+# read -- a version that is not installed has to be refused, not ignored.
+@test "honours a project's .nvmrc" {
+  local want
+  want="$(dockerfile_arg NODE_VERSION)"
+
+  run in_box zsh -c "mkdir -p /tmp/nvmrc && cd /tmp/nvmrc && echo $want > .nvmrc && mise current node"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$want" ]
+
+  run in_box zsh -c 'cd /tmp/nvmrc && echo 18.0.0 > .nvmrc && MISE_AUTO_INSTALL=0 node --version'
+  [ "$status" -ne 0 ]
+}
+
+# The system Node is image-owned, and mise reshims only the user's own shim
+# directory -- so a global install into it lands somewhere nothing on PATH
+# points. npm's prefix is moved into home instead. Installed from a local
+# directory so the case needs no registry.
+@test "npm global installs land on PATH" {
+  run in_box zsh -c 'mkdir -p /tmp/probe/bin \
+    && printf "%s" "{\"name\":\"probe-cli\",\"version\":\"1.0.0\",\"bin\":{\"probe-cli\":\"bin/p.js\"}}" > /tmp/probe/package.json \
+    && printf "#!/usr/bin/env node\nconsole.log(\"probe ok\")\n" > /tmp/probe/bin/p.js \
+    && npm install -g /tmp/probe >/dev/null 2>&1 && probe-cli'
+  [ "$status" -eq 0 ]
+  [ "$output" = "probe ok" ]
+}
+
+# In production /root/.local/share and /root/.cache are volumes, and Docker
+# seeds an empty volume from whatever the image has at that path. Anything
+# the build leaves there arrives once on a fresh deploy and never updates.
+# Asserted against the image, since this file's shared box has run mise by now.
+@test "bakes no mise state into home" {
+  run docker run --rm --entrypoint sh "$IMAGE" -c \
+    'ls -d /root/.local/share/mise /root/.cache/mise /root/.local/state/mise 2>/dev/null'
+  [ -z "$output" ]
 }
 
 @test "installs the pinned fzf version" {

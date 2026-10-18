@@ -80,7 +80,8 @@ jobs:
           args: .
 
       # shellcheck ships with the runner image. bin/* and git-aliases.zsh are
-      # zsh, which shellcheck cannot parse -- they get `zsh -n` below instead.
+      # zsh, which shellcheck cannot parse -- they get `zsh -n` below instead,
+      # along with the shell environment under zsh/.
       # Both are globbed rather than listed: a hardcoded list silently stops
       # covering the next script someone adds, and this one had already missed
       # tests/helpers.bash.
@@ -92,7 +93,7 @@ jobs:
 
       - name: zsh syntax check
         run: |
-          for f in bin/* git-aliases.zsh; do
+          for f in bin/* zsh/* git-aliases.zsh; do
             echo "checking $f"
             zsh -n "$f"
           done

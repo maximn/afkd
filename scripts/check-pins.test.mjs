@@ -78,8 +78,26 @@ rejects('a download that pins nothing',
   'without interpolating')
 
 rejects('an untagged base image',
-  (s) => s.replace(/^FROM \S+/m, 'FROM node:latest'),
+  (s) => s.replace(/^FROM \S+/m, 'FROM debian:latest'),
   'untagged or :latest')
+
+// A tag can be re-pushed; only the digest names exact bytes. Renovate keeps
+// tag and digest moving together, so requiring both costs nothing.
+rejects('a base image pinned by tag alone',
+  (s) => s.replace(/^FROM (\S+?)@sha256:\w+/m, 'FROM $1'),
+  'no digest')
+
+rejects('a COPY --from image pinned by tag alone',
+  (s) => s.replace(/(COPY --from=\S+?)@sha256:\w+/, '$1'),
+  'no digest')
+
+rejects('an untagged COPY --from image',
+  (s) => `${s}\nCOPY --from=ghcr.io/o/tool /usr/local/bin/tool /usr/local/bin/tool\n`,
+  'untagged or :latest')
+
+// A build stage named earlier in the file is not an image reference.
+accepts('a COPY --from naming a build stage',
+  (s) => s.replace(/^FROM (\S+)/m, 'FROM $1 AS base') + '\nCOPY --from=base /etc/hostname /tmp/x\n')
 
 // The digest-pin shape: same rules, different manager. Worth its own cases
 // because a _REF pin is matched by a second customManager, and an ARG that

@@ -34,7 +34,7 @@ the agent credentials and the optional ntfy notifications not shown here.
 | `*-dotconfig` | `/root/.config` | App configs (gh, starship, etc.) |
 | `*-codex` | `/root/.codex` | Codex CLI auth and settings |
 | `*-dev` | `/root/dev` | Development projects |
-| `*-cache` | `/root/.cache` | Regenerable-but-expensive caches: npm (pointed here by the image's global npmrc), JetBrains IDE backend and project indexes |
+| `*-cache` | `/root/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
 | `*-localshare` | `/root/.local/share` | JetBrains backend plugins and per-project data |
 
 Size the cache volume with headroom — a JetBrains backend is ~1.5 GB before

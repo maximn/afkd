@@ -35,7 +35,7 @@ Before opening a PR:
 
 ```bash
 shellcheck entrypoint.sh tests/*.bash
-for f in bin/* git-aliases.zsh; do zsh -n "$f"; done
+for f in bin/* zsh/* git-aliases.zsh; do zsh -n "$f"; done
 ```
 
 Both are globs, and CI runs the same two lines — add a script and it is

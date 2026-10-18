@@ -1,0 +1,25 @@
+# Sourced from /etc/zsh/zshenv, so every zsh on the box reads it: ssh
+# commands, interactive logins and the shells agents spawn. Keep it to
+# environment -- nothing here may print or prompt.
+
+# mise's shims resolve a tool's version per directory, for shells that never
+# run `mise activate`. The user's own shim directory holds versions installed
+# for projects; the system one holds the image's defaults. ~/.local/bin is
+# where npm's global installs land (below).
+typeset -U path
+path=("$HOME/.local/bin" "$HOME/.local/share/mise/shims" /usr/local/share/mise/shims $path)
+
+# The default Node is installed system-wide and owned by the image, and mise
+# reshims only the user's directory after `npm i -g` -- so a global install
+# into it would land where nothing on PATH points. Global CLIs go to home
+# instead, which also keeps them across a Node version change.
+export NPM_CONFIG_PREFIX="$HOME/.local"
+
+# npm ignores XDG on Linux and caches to ~/.npm. ~/.cache is where every
+# other cache on the box lives, and the one that persists across redeploys.
+export NPM_CONFIG_CACHE="$HOME/.cache/npm"
+
+# corepack would otherwise stop at a y/N prompt the first time a project's
+# package manager is fetched -- which an agent's non-interactive shell never
+# answers.
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
