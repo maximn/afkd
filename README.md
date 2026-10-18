@@ -42,11 +42,17 @@ Minimum to boot:
 docker build -t remote-claude-code .
 docker run -d -p 2222:22 \
   -e SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
-  -v rcc-config:/root/.config \
-  -v rcc-claude:/root/.claude \
-  -v rcc-dev:/root/dev \
+  -v rcc-home:/home/dev \
+  -v rcc-cache:/home/dev/.cache \
+  -v rcc-system:/var/lib/remote-claude \
   remote-claude-code
 ```
+
+You log in as `dev`, which owns all of `/home/dev` and has passwordless `sudo`.
+Home is persisted whole; the image keeps its own config under `/etc` and
+`/usr`, so a long-lived home still gets every image update. The system volume
+holds the SSH host keys. Coming from an image that ran as root? See
+[Migrating from the root layout](coolify.md#migrating-from-the-root-layout).
 
 `SSH_PUBLIC_KEYS` is required and the entrypoint refuses to start without it:
 password auth is disabled, so no keys would mean a container that passes its
@@ -96,7 +102,8 @@ bats --print-output-on-failure tests/
 The suite boots the real image for every case, because each entrypoint bug this
 repo has shipped was only visible at runtime. `tests/entrypoint.bats` covers key
 installation, the `GITHUB_SSH_KEY` formats and forwarded-env quoting;
-`tests/ssh.bats` proves a real login works; `tests/image.bats` checks the
+`tests/ssh.bats` proves a real login works; `tests/migrate.bats` runs
+`rcc-migrate` against volumes laid out the way root-era images left them; `tests/image.bats` checks the
 toolchain matches the pinned versions.
 
 Linting: `shellcheck entrypoint.sh`, `zsh -n` for the `bin/` scripts (they're

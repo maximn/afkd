@@ -98,6 +98,20 @@ dockerfile_arg() {
   grep -qE 'startup update check +false' <<<"$output"
 }
 
+# Claude Code will not skip permission prompts as root, which is how agents
+# run unattended on this box. As dev the guard has nothing to say, and the
+# run gets as far as wanting credentials. Run as root first so the case is
+# proven able to tell the two apart.
+@test "Claude Code's root guard does not stand in the way" {
+  local guard="cannot be used with root/sudo privileges"
+
+  run in_box timeout 60 claude --dangerously-skip-permissions -p ping
+  [[ "$output" == *"$guard"* ]]
+
+  run as_dev timeout 60 claude --dangerously-skip-permissions -p ping
+  [[ "$output" != *"$guard"* ]]
+}
+
 # Neither agent is installed through npm any more; a leftover global install
 # would shadow the pinned one depending on PATH order.
 @test "no agent is installed through npm" {
@@ -120,7 +134,7 @@ dockerfile_arg() {
   want="$(dockerfile_arg NODE_VERSION)"
   [ -n "$want" ]
 
-  run in_box zsh -c 'node --version'
+  run as_dev zsh -c 'node --version'
   [ "$status" -eq 0 ]
   [ "$output" = "v$want" ]
 }
@@ -132,11 +146,11 @@ dockerfile_arg() {
   local want
   want="$(dockerfile_arg NODE_VERSION)"
 
-  run in_box zsh -c "mkdir -p /tmp/nvmrc && cd /tmp/nvmrc && echo $want > .nvmrc && mise current node"
+  run as_dev zsh -c "mkdir -p /tmp/nvmrc && cd /tmp/nvmrc && echo $want > .nvmrc && mise current node"
   [ "$status" -eq 0 ]
   [ "$output" = "$want" ]
 
-  run in_box zsh -c 'cd /tmp/nvmrc && echo 18.0.0 > .nvmrc && MISE_AUTO_INSTALL=0 node --version'
+  run as_dev zsh -c 'cd /tmp/nvmrc && echo 18.0.0 > .nvmrc && MISE_AUTO_INSTALL=0 node --version'
   [ "$status" -ne 0 ]
 }
 
@@ -145,7 +159,7 @@ dockerfile_arg() {
 # points. npm's prefix is moved into home instead. Installed from a local
 # directory so the case needs no registry.
 @test "npm global installs land on PATH" {
-  run in_box zsh -c 'mkdir -p /tmp/probe/bin \
+  run as_dev zsh -c 'mkdir -p /tmp/probe/bin \
     && printf "%s" "{\"name\":\"probe-cli\",\"version\":\"1.0.0\",\"bin\":{\"probe-cli\":\"bin/p.js\"}}" > /tmp/probe/package.json \
     && printf "#!/usr/bin/env node\nconsole.log(\"probe ok\")\n" > /tmp/probe/bin/p.js \
     && npm install -g /tmp/probe >/dev/null 2>&1 && probe-cli'
@@ -158,10 +172,10 @@ dockerfile_arg() {
 # so every one of them failed. Resolved the way git does, so the assertion
 # follows whatever git would actually launch.
 @test "has an editor that git can launch" {
-  run in_box zsh -c 'editor="$(git var GIT_EDITOR)" && command -v "${editor%% *}"'
+  run as_dev zsh -c 'editor="$(git var GIT_EDITOR)" && command -v "${editor%% *}"'
   [ "$status" -eq 0 ]
 
-  run in_box zsh -c 'echo "$EDITOR|$VISUAL"'
+  run as_dev zsh -c 'echo "$EDITOR|$VISUAL"'
   [ "$output" = "vim|vim" ]
 }
 
@@ -202,7 +216,7 @@ dockerfile_arg() {
 # binding.gyp runs node-gyp, which needs a compiler, make and python. Pointed
 # at the installed Node's own headers so the case needs no download.
 @test "builds a native npm module" {
-  run in_box zsh -c 'cd "$(mktemp -d)" \
+  run as_dev zsh -c 'cd "$(mktemp -d)" \
     && printf "%s" "{\"name\":\"native-probe\",\"version\":\"1.0.0\",\"main\":\"build/Release/probe.node\"}" > package.json \
     && printf "%s" "{\"targets\":[{\"target_name\":\"probe\",\"sources\":[\"probe.c\"]}]}" > binding.gyp \
     && printf "%s\n" "#include <node_api.h>" \
@@ -214,14 +228,42 @@ dockerfile_arg() {
   [ "$output" = "native ok" ]
 }
 
-# In production /root/.local/share and /root/.cache are volumes, and Docker
-# seeds an empty volume from whatever the image has at that path. Anything
-# the build leaves there arrives once on a fresh deploy and never updates.
-# Asserted against the image, since this file's shared box has run mise by now.
+# Home is a volume, and Docker seeds an empty volume from whatever the image
+# has at that path. Anything the build leaves there arrives once on a fresh
+# deploy and never updates. Asserted against the image, since this file's
+# shared box has run mise by now.
 @test "bakes no mise state into home" {
   run docker run --rm --entrypoint sh "$IMAGE" -c \
-    'ls -d /root/.local/share/mise /root/.cache/mise /root/.local/state/mise 2>/dev/null'
+    'ls -d /home/dev/.local/share/mise /home/dev/.cache/mise /home/dev/.local/state/mise \
+       /root/.local/share/mise /root/.cache/mise /root/.local/state/mise 2>/dev/null'
   [ -z "$output" ]
+}
+
+# Fixed at 1000, the first uid a Debian host hands out, so a bind-mounted
+# project from the host's own first user comes out owned by the same person
+# on both sides.
+@test "has the dev login user" {
+  run in_box getent passwd dev
+  [ "$output" = "dev:x:1000:1000::/home/dev:/usr/bin/zsh" ]
+}
+
+# The skeleton is what Docker copies into an empty home volume, so it has to
+# be dev's in the image itself. The cache is a volume nested inside home and
+# seeded the same way.
+@test "seeds the image's home as dev's" {
+  run docker run --rm --entrypoint stat "$IMAGE" -c '%U %a' /home/dev /home/dev/.cache /home/dev/.zshrc
+  [ "$output" = $'dev 700\ndev 755\ndev 644' ]
+}
+
+@test "grants dev passwordless sudo through a valid drop-in" {
+  run in_box visudo -cf /etc/sudoers.d/dev
+  [ "$status" -eq 0 ]
+
+  run in_box stat -c '%U %a' /etc/sudoers.d/dev
+  [ "$output" = "root 440" ]
+
+  run as_dev sudo -n true
+  [ "$status" -eq 0 ]
 }
 
 @test "installs the pinned fzf version" {
@@ -281,13 +323,10 @@ dockerfile_arg() {
 # ~/.zshrc. `zsh -i` is what makes zsh read rc files at all; its stray
 # terminal chatter is dropped so only the probe's output is compared.
 interactive() {
-  in_box zsh -ic "$1" 2>/dev/null
+  as_dev zsh -ic "$1" 2>/dev/null
 }
 
-@test "root logs into zsh with the shell config sourced" {
-  run in_box getent passwd root
-  [[ "$output" == *"zsh"* ]]
-
+@test "an interactive shell has the image's config sourced" {
   run interactive 'alias gst'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git status"* ]]
@@ -298,17 +337,17 @@ interactive() {
 # whatever it was first seeded with: config living there would stop receiving
 # image updates on the first deploy.
 @test "keeps image-owned shell config out of home" {
-  run in_box sh -c 'ls -d /root/.omz-git /root/.git-aliases.zsh 2>/dev/null'
+  run in_box sh -c 'ls -d /home/dev/.omz-git /home/dev/.git-aliases.zsh 2>/dev/null'
   [ -z "$output" ]
 }
 
 # ~/.zshrc is the user's to edit. Whatever is in it -- here, nothing of the
 # image's at all -- the image's config still arrives.
 @test "a ~/.zshrc of the user's own still gets the image's shell config" {
-  in_box sh -c 'cp /root/.zshrc /tmp/zshrc.bak && echo "# mine" > /root/.zshrc'
+  as_dev sh -c 'cp ~/.zshrc /tmp/zshrc.bak && echo "# mine" > ~/.zshrc'
 
   run interactive 'alias gst'
-  in_box sh -c 'mv /tmp/zshrc.bak /root/.zshrc'
+  as_dev sh -c 'mv /tmp/zshrc.bak ~/.zshrc'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git status"* ]]
 }
@@ -358,20 +397,19 @@ interactive() {
 # drop-in included, so this keeps holding however the setting gets there and
 # stops holding the moment sshd disagrees. The Dockerfile runs the same check
 # at build time; this one proves it survived into a booted container, where
-# /etc/ssh has since been written over with the persisted host keys.
+# the host keys have since been generated or restored onto the system volume.
 @test "sshd runs with the hardening drop-in in effect" {
   run in_box /usr/sbin/sshd -T
   [ "$status" -eq 0 ]
 
-  # Regexes, not literals: sshd -T answers in its own spelling, and
-  # prohibit-password comes back as the older synonym without-password.
   local kv
   for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
     'permitemptypasswords no' \
-    'permitrootlogin (without-password|prohibit-password)' \
+    'permitrootlogin no' 'allowusers dev' \
     'x11forwarding no' 'maxauthtries 4' \
     'clientaliveinterval 300' 'clientalivecountmax 2' \
-    'authorizedkeysfile /etc/ssh/authorized_keys/%u'; do
+    'authorizedkeysfile /etc/ssh/authorized_keys/%u' \
+    'hostkey /var/lib/remote-claude/ssh/ssh_host_ed25519_key'; do
     grep -qE "^${kv}$" <<<"$output" || {
       echo "not in effect: $kv"
       false
@@ -384,7 +422,8 @@ interactive() {
 # the entrypoint's `ssh-keygen -A` never replaced them. Asserted against the
 # image rather than a running container, since the entrypoint creates them.
 @test "bakes no ssh host keys into the image" {
-  run docker run --rm "$IMAGE" sh -c 'ls /etc/ssh/ssh_host_* 2>/dev/null | wc -l'
+  run docker run --rm --entrypoint sh "$IMAGE" -c \
+    'ls /etc/ssh/ssh_host_* /var/lib/remote-claude/ssh/ssh_host_* 2>/dev/null | wc -l'
   [ "$status" -eq 0 ]
   [ "${output//[[:space:]]/}" = "0" ]
 }

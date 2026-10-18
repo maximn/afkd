@@ -11,31 +11,62 @@
 # as the SHELL line in the Dockerfile.
 set -euo pipefail
 
-# Every directory this script writes into, created up front. Which of them
-# already exist depends on what the deployment mounts where: /root/.config is a
-# volume in production and absent on a bare `docker run`. A missing directory
-# turns one of the redirects below into a fatal error under `set -e`, and an
-# entrypoint that dies never reaches `exec sshd`.
-mkdir -p /root/.config /root/.claude /root/dev
-
 # Everything the deployment hands over at boot -- forwarded tokens, the GitHub
 # key -- is written here rather than into home. It is rebuilt from the
 # environment on every boot, so unsetting a value on the deployment removes it
 # from the box, and home (a volume, which keeps whatever lands in it) never
 # holds a secret it did not put there itself.
+#
+# The files are dev's, since dev's shell and git read them; the directory is
+# root's, so nothing but this script decides what is in it.
 RUNTIME_DIR=/run/remote-claude
-install -d -m 700 "$RUNTIME_DIR"
+install -d -m 750 -o root -g dev "$RUNTIME_DIR"
 
-# Persist SSH host keys across redeployments.
-if [ ! -f /root/.config/ssh_host_ed25519_key ]; then
-  ssh-keygen -A
-  cp /etc/ssh/ssh_host_*_key* /root/.config/
-else
-  cp /root/.config/ssh_host_*_key* /etc/ssh/
+# SSH host keys, on the system-state volume (HostKey in the drop-in) so the
+# box keeps its identity across redeploys. Created on first boot, one per
+# type, and never replaced.
+HOST_KEYS=/var/lib/remote-claude/ssh
+install -d -m 755 /var/lib/remote-claude
+install -d -m 700 "$HOST_KEYS"
+
+# Images before the dev user kept the keys in /root/.config. That volume is
+# still mounted on the deploy that runs rcc-migrate, and adopting its keys
+# here, before sshd starts, is what lets the box come up as the same host.
+if ! compgen -G "$HOST_KEYS/ssh_host_*_key" >/dev/null \
+   && compgen -G "/root/.config/ssh_host_*_key" >/dev/null; then
+  cp /root/.config/ssh_host_*_key* "$HOST_KEYS/"
+  chown root:root "$HOST_KEYS"/ssh_host_*
+  chmod 600 "$HOST_KEYS"/ssh_host_*_key
+  echo "adopted the SSH host keys an older image kept in /root/.config"
 fi
+for type in ed25519 ecdsa rsa; do
+  if [ ! -f "$HOST_KEYS/ssh_host_${type}_key" ]; then
+    ssh-keygen -q -t "$type" -N '' -f "$HOST_KEYS/ssh_host_${type}_key"
+  fi
+done
 
-# Claude Code config symlink
-ln -sf /root/.claude/.claude.json /root/.claude.json
+# Home is a volume, and Docker seeds an empty one from the image's /home/dev,
+# ownership included. Where that did not happen the directory is root's and
+# empty, and is simply handed to dev. One that is root's and holds anything
+# is somebody's data -- most likely the old /root volumes mounted at the new
+# path -- and taking it over is not this script's call. Refusing to boot would
+# lock out the one person who can fix it, so it warns and carries on.
+claim_for_dev() {
+  local dir="$1" mode="$2" owner
+  mkdir -p "$dir"
+  owner="$(stat -c %U "$dir")"
+  [ "$owner" = dev ] && return 0
+  # The cache volume is mounted inside home, so its mount point is there even
+  # in a home that has never held anything.
+  if [ -z "$(find "$dir" -mindepth 1 -maxdepth 1 ! -path /home/dev/.cache -print -quit)" ]; then
+    chown dev:dev "$dir"
+    chmod "$mode" "$dir"
+    return 0
+  fi
+  echo "warning: $dir is owned by $owner, not dev, and is not empty; leaving it as it is." \
+       "If it holds the root-era volumes, run 'sudo rcc-migrate'; otherwise 'sudo chown -R dev:dev $dir'." >&2
+  return 1
+}
 
 # SSH authorized keys. Password auth is off, so no keys means no way in and a
 # container that looks healthy while being unreachable. Fail loudly instead.
@@ -48,8 +79,16 @@ fi
 # outlive the key's removal from SSH_PUBLIC_KEYS for as long as the volume
 # under it does.
 install -d -m 755 /etc/ssh/authorized_keys
-(umask 022; printf '%s\n' "${SSH_PUBLIC_KEYS}" > /etc/ssh/authorized_keys/root)
-chmod 644 /etc/ssh/authorized_keys/root
+(umask 022; printf '%s\n' "${SSH_PUBLIC_KEYS}" > /etc/ssh/authorized_keys/dev)
+chmod 644 /etc/ssh/authorized_keys/dev
+
+# Home itself. Its contents are written by home-init, as dev; a failure there
+# costs a default settings file, not the way in, so it warns and carries on.
+if claim_for_dev /home/dev 700; then
+  claim_for_dev /home/dev/.cache 755 || true
+  runuser -u dev -- /usr/local/libexec/remote-claude/home-init \
+    || echo "warning: could not set up /home/dev; see the lines above" >&2
+fi
 
 # Git identity. Deliberately no fallback: these used to default to the name and
 # email of this repo's author, so every deployment but one committed under an
@@ -101,6 +140,7 @@ if [ -n "${GITHUB_SSH_KEY:-}" ]; then
     if [ -n "$(tail -c1 "$GITHUB_KEY")" ]; then
       echo >> "$GITHUB_KEY"
     fi
+    chown dev:dev "$GITHUB_KEY"
     chmod 600 "$GITHUB_KEY"
     gh_key_ok=1
   else
@@ -144,57 +184,8 @@ FORWARDED_ENV="$RUNTIME_DIR/env.zsh"
     printf 'export %s=%q\n' "$name" "${!name}"
   done > "$FORWARDED_ENV"
 )
+chown dev:dev "$FORWARDED_ENV"
 chmod 600 "$FORWARDED_ENV"
-
-# Claude Code default settings: the user's own file, seeded once and never
-# overwritten. Written under a umask because the user may well put a token in
-# it, and older images merged the ntfy bearer token into it.
-if [ ! -f /root/.claude/settings.json ]; then
-  (umask 077
-   cat > /root/.claude/settings.json <<'SETTINGS'
-{
-  "permissions": {
-    "allow": ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "WebSearch"],
-    "deny": ["Bash(rm -rf:*)", "Bash(git push --force:*)", "Bash(git reset --hard:*)"],
-    "defaultMode": "auto"
-  },
-  "alwaysThinkingEnabled": true
-}
-SETTINGS
-  )
-fi
-
-# Older images merged the ntfy hooks into the user's settings.json on every
-# boot, bearer token and all. A volume written by one still carries them, and
-# left in place they would fire alongside the managed copy below and keep the
-# token in home. Only entries carrying this image's own ntfy titles are
-# removed -- anything else under those events is the user's -- and the file is
-# rewritten only when something was actually removed.
-#
-# The scratch file sits next to the target rather than in /tmp. /root/.claude
-# is a volume, so /tmp is a different filesystem: `mv` across it is a copy
-# that both loses atomicity and carries /tmp's mode onto the file. Same
-# directory, same umask, real rename.
-if [ -f /root/.claude/settings.json ] \
-   && (umask 077
-       jq 'if .hooks then
-             .hooks |= (with_entries(.value |= (
-                          map(.hooks |= map(select(((.command // "")
-                                | test("Title: Claude (needs you|finished)")) | not)))
-                          | map(select(.hooks | length > 0))))
-                        | with_entries(select(.value | length > 0)))
-             | if .hooks == {} then del(.hooks) else . end
-           else . end' \
-         /root/.claude/settings.json > /root/.claude/settings.json.tmp) 2>/dev/null \
-   && ! cmp -s <(jq -S . /root/.claude/settings.json) <(jq -S . /root/.claude/settings.json.tmp); then
-  mv /root/.claude/settings.json.tmp /root/.claude/settings.json
-  echo "removed notification hooks an older image wrote into settings.json; they now come from managed settings"
-fi
-rm -f /root/.claude/settings.json.tmp
-
-# Unconditional rather than at creation: a settings.json restored from a volume
-# written by an older image is 0644 and may still have held the ntfy token.
-chmod 600 /root/.claude/settings.json
 
 # Agent lifecycle notifications. Rebuilt on every boot from NTFY_URL, so the
 # wiring stays declarative. This is what lets a detached session page a phone
@@ -202,7 +193,8 @@ chmod 600 /root/.claude/settings.json
 #
 # They are the deployment's hooks, not the user's, so they go into Claude
 # Code's managed settings: Claude merges them over whatever the user has,
-# nothing in home is touched, and the token never lands on a volume.
+# nothing in home is touched, and the token never lands on a volume. Readable
+# by root and the dev group alone, since it carries the token.
 #
 # These two strings are commands Claude Code hands to a shell, so the URL and
 # the token are shell-quoted with %q before being spliced in. They used to be
@@ -238,7 +230,7 @@ if [ -n "${NTFY_URL:-}" ]; then
     echo "warning: could not write the notification hooks" >&2
     rm -f "$NTFY_SETTINGS"
   fi
-  chmod 600 "$NTFY_SETTINGS" 2>/dev/null || true
+  { chown root:dev "$NTFY_SETTINGS" && chmod 640 "$NTFY_SETTINGS"; } 2>/dev/null || true
 fi
 
 # nofile is raised through Coolify's Custom Docker Options, a hand-pasted field

@@ -33,18 +33,39 @@ make_volume() {
   echo "$v"
 }
 
-# Boots the image the way it is actually deployed: with a volume on
-# /root/.config, where the SSH host keys are persisted. Extra `docker run`
-# arguments are passed through. Set CONFIG_VOL beforehand to reuse a volume
-# from an earlier container (host-key persistence).
+# Boots the image the way it is actually deployed: with home, its cache and
+# the system state (the SSH host keys) each on a volume of its own. Extra
+# `docker run` arguments are passed through. Set HOME_VOL, CACHE_VOL or
+# SYSTEM_VOL beforehand to boot onto a volume an earlier container wrote --
+# a seeded home, or host keys that have to survive a replacement.
 start_box() {
-  [ -n "${CONFIG_VOL:-}" ] || CONFIG_VOL="$(make_volume)"
-  BOX="rcc-ci-$$-${RANDOM}"
+  [ -n "${HOME_VOL:-}" ] || HOME_VOL="$(make_volume)"
+  [ -n "${CACHE_VOL:-}" ] || CACHE_VOL="$(make_volume)"
+  [ -n "${SYSTEM_VOL:-}" ] || SYSTEM_VOL="$(make_volume)"
   # Exported so a file-scoped setup_file can hand its box to the tests: bats
   # runs setup_file in a shell of its own.
-  export BOX CONFIG_VOL
-  docker run -d --name "$BOX" --label "${LABEL}=1" \
-    -v "${CONFIG_VOL}:/root/.config" "$@" "$IMAGE" >/dev/null
+  export HOME_VOL CACHE_VOL SYSTEM_VOL
+  boot_box -v "${HOME_VOL}:/home/dev" -v "${CACHE_VOL}:/home/dev/.cache" \
+    -v "${SYSTEM_VOL}:/var/lib/remote-claude" "$@"
+}
+
+# Boots the image with exactly the mounts given and no others: a bare
+# `docker run`, an unseeded home, the legacy root layout.
+boot_box() {
+  BOX="rcc-ci-$$-${RANDOM}"
+  export BOX
+  docker run -d --name "$BOX" --label "${LABEL}=1" "$@" "$IMAGE" >/dev/null
+}
+
+# Writes into a home volume the way the user would have: as dev, so ownership
+# is what a real session leaves behind. An empty volume is seeded from the
+# image's /home/dev on this first mount, as it is in production. The script
+# reads stdin, for fixtures passed as a heredoc.
+seed_home() {
+  local vol="$1"
+  shift
+  docker run --rm -i --label "${LABEL}=1" --user dev -v "${vol}:/home/dev" \
+    --entrypoint bash "$IMAGE" -c "$@"
 }
 
 # sshd is the last thing the entrypoint does, so it running means the whole
@@ -89,6 +110,12 @@ in_box() {
   docker exec "$BOX" "$@"
 }
 
+# As the login user, the way an ssh session runs. docker exec takes HOME from
+# the user's passwd entry, but not the working directory.
+as_dev() {
+  docker exec -u dev -w /home/dev "$BOX" "$@"
+}
+
 box_logs() {
   docker logs "$BOX" 2>&1
 }
@@ -109,6 +136,8 @@ cleanup_box() {
     : > "$vols"
   fi
   BOX=""
-  CONFIG_VOL=""
+  HOME_VOL=""
+  CACHE_VOL=""
+  SYSTEM_VOL=""
   return 0
 }

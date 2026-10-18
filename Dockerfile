@@ -89,6 +89,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     htop \
     procps \
+# The login user is not root, and still administers its own box.
+    sudo \
 # The workstation layer -- what a person or an agent reaches for on a box they
 # work on, which a runtime image rightly leaves out.
 #
@@ -271,9 +273,8 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 # node base image shipped, never could. Node stops bundling corepack from 25 on,
 # so a major bump fails right here rather than quietly dropping yarn.
 #
-# mise also writes download scratch under root's home. /root/.local/share and
-# /root/.cache are volumes in production, and Docker seeds an empty volume from
-# the image, so it is removed rather than left to land there.
+# mise also writes download scratch under root's home, which nothing reads at
+# runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
 ARG NODE_VERSION=24.21.0
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
@@ -337,22 +338,25 @@ RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 COPY sshd_config.d/99-remote-claude.conf /etc/ssh/sshd_config.d/99-remote-claude.conf
 # A hardening file that is silently not read is worse than no hardening file,
 # so assert the end state rather than the mechanism: `sshd -T` prints the
-# config as sshd has actually merged it. It prints sshd's own spelling, not
-# the file's -- prohibit-password comes back as its older synonym
-# without-password -- hence the alternation rather than a literal match. It refuses to run without host keys,
-# hence the keygen -- and the rm in the same layer, so none are baked into the
-# image (tests/image.bats asserts that separately).
+# config as sshd has actually merged it. It refuses to run without the host
+# keys it is configured with, hence the keygen -- and the rm in the same
+# layer, so none are baked into the image (tests/image.bats asserts that
+# separately).
 RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
-    && ssh-keygen -A >/dev/null \
+    && install -d -m 700 /var/lib/remote-claude/ssh \
+    && for type in ed25519 ecdsa rsa; do \
+         ssh-keygen -q -t "${type}" -N '' -f "/var/lib/remote-claude/ssh/ssh_host_${type}_key"; \
+       done \
     && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
     && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
-                 'permitrootlogin (without-password|prohibit-password)' \
+                 'permitrootlogin no' 'allowusers dev' \
                  'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300' \
-                 'authorizedkeysfile /etc/ssh/authorized_keys/%u'; do \
-         grep -qE "^${kv}$" /tmp/sshd-effective.conf \
+                 'authorizedkeysfile /etc/ssh/authorized_keys/%u' \
+                 'hostkey /var/lib/remote-claude/ssh/ssh_host_ed25519_key'; do \
+         grep -qx "${kv}" /tmp/sshd-effective.conf \
            || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
        done \
-    && rm -f /tmp/sshd-effective.conf /etc/ssh/ssh_host_*
+    && rm -rf /tmp/sshd-effective.conf /var/lib/remote-claude
 
 # Only the server-side helpers. cc and ch run on the laptop and ssh *to* the
 # box; shipped here they did nothing useful, and /usr/local/bin/cc shadowed
@@ -370,6 +374,26 @@ COPY zsh/remote-claude.zshrc /etc/zsh/remote-claude.zshrc
 COPY zsh/skel.zshrc /etc/skel/.zshrc
 RUN echo 'source /etc/zsh/remote-claude.zshrc' >> /etc/zsh/zshrc \
     && cp /etc/skel/.zshrc /root/.zshrc
+
+# The one login. Its home is created here, from the skeleton above, because
+# Docker seeds an empty volume from what the image holds at the mount point --
+# files, ownership and mode -- so a first deploy starts with a home that is
+# already dev's. The cache volume is mounted inside it and seeded the same
+# way. uid 1000 is the first a Debian host hands out, so a project
+# bind-mounted from that host's first user has the same owner on both sides.
+#
+# Passwordless sudo because no password is ever set: the box is single-user,
+# and this is that user administering it, not a privilege boundary.
+RUN useradd --create-home --uid 1000 --user-group --shell /usr/bin/zsh dev \
+    && chmod 700 /home/dev \
+    && install -d -o dev -g dev -m 755 /home/dev/.cache \
+    && echo 'dev ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/dev \
+    && chmod 440 /etc/sudoers.d/dev \
+    && visudo -cf /etc/sudoers.d/dev
+
+COPY home-init.sh /usr/local/libexec/remote-claude/home-init
+COPY rcc-migrate.sh /usr/local/bin/rcc-migrate
+RUN chmod 755 /usr/local/libexec/remote-claude/home-init /usr/local/bin/rcc-migrate
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

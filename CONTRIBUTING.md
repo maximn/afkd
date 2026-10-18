@@ -25,7 +25,13 @@ npm install -g bats
 bats --print-output-on-failure tests/
 ```
 
-Every test boots the image. If you change `entrypoint.sh`, add the case that
+Every test boots the image. `start_box` mounts the three volumes a deployment
+has; `as_dev` runs a command as the login user, which is what a session is, so
+reach for it over `in_box` (root) for anything a user would do. Fixtures for
+a home go in through `seed_home`, which writes as dev so ownership comes out
+the way a real session leaves it.
+
+If you change `entrypoint.sh` or `home-init.sh`, add the case that
 would have caught the bug — the existing tests in `tests/entrypoint.bats` each
 correspond to a failure that reached production. Make sure the case you add can
 actually fail: `docker exec` inherits the container's environment, so reading a
@@ -37,7 +43,7 @@ all labelled: `docker volume prune --filter label=rcc-ci=1`.
 Before opening a PR:
 
 ```bash
-shellcheck entrypoint.sh tests/*.bash
+shellcheck ./*.sh tests/*.bash
 for f in bin/* zsh/* git-aliases.zsh; do zsh -n "$f"; done
 ```
 
