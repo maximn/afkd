@@ -3,10 +3,19 @@
 ## Setup (New Application)
 
 1. Create a new application from GitHub repo `maximn/remote-claude-code`
-2. Branch: `main`, Build Pack: `Dockerfile`, Base Directory: `/`, Port: `22`
-3. After creation, configure the sections below
+2. Branch: `main`, Build Pack: `Docker Compose`, Base Directory: `/`, Docker
+   Compose Location: `/docker-compose.yaml`
+3. Fill in the environment variables Coolify lists, then deploy
+
+[docker-compose.yaml](docker-compose.yaml) carries the port, the volumes and
+the fd limit, so there is nothing else to set by hand -- and nothing that
+recreating the app in the UI can quietly drop.
 
 ## Environment Variables
+
+Coolify reads the variables from the compose file and lists them under
+Environment Variables. `SSH_PUBLIC_KEYS` is marked required, and Coolify will
+not deploy while it is empty; the rest are optional and start out blank.
 
 | Variable | Required | Description |
 |---|---|---|
@@ -20,18 +29,18 @@ the agent credentials and the optional ntfy notifications not shown here.
 
 ## Ports
 
-| Setting | Value |
-|---|---|
-| Port (Exposes) | `22` |
-| Port Mappings | `2222:22` |
+SSH is published on host port `2222`. Set `SSH_PORT` to use another; it is
+read by the compose file, not by the image.
 
 ## Persistent Storage (Volumes)
 
-| Volume Name | Mount Path | Purpose |
+Declared in the compose file; Coolify names each one `<app uuid>_<name>`.
+
+| Volume | Mount Path | Purpose |
 |---|---|---|
-| `*-home` | `/home/dev` | All of dev's home: agent auth, settings and sessions (`~/.claude`, `~/.claude.json`, `~/.codex`), app configs (`~/.config`), projects (`~/dev`), JetBrains plugins (`~/.local/share`), your own dotfiles |
-| `*-cache` | `/home/dev/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
-| `*-system` | `/var/lib/remote-claude` | The SSH host keys, kept out of home so dev cannot read them |
+| `home` | `/home/dev` | All of dev's home: agent auth, settings and sessions (`~/.claude`, `~/.claude.json`, `~/.codex`), app configs (`~/.config`), projects (`~/dev`), JetBrains plugins (`~/.local/share`), your own dotfiles |
+| `cache` | `/home/dev/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
+| `system` | `/var/lib/remote-claude` | The SSH host keys, kept out of home so dev cannot read them |
 
 Home is one volume rather than one per directory. Anything a tool writes there
 survives a redeploy, including the tools nobody thought to give a volume, and
@@ -45,7 +54,7 @@ worth backing up, but a *full* volume fails at write time in the middle of
 work, which is worse than a cold cache. Caches don't reset on redeploy, so a
 corrupt one has to be cleared by hand with `rm -rf ~/.cache/<subdir>`.
 
-Docker seeds an empty volume from the image, so a fresh `*-home` starts as
+Docker seeds an empty volume from the image, so a fresh `home` starts as
 dev's, with the skeleton dotfiles in it. Where that doesn't happen, the
 entrypoint hands an empty home to dev itself. A home that dev doesn't own and
 that already holds files is left alone, with a warning in the container log.
@@ -53,9 +62,10 @@ that already holds files is left alone, with a warning in the container log.
 ## Migrating from the root layout
 
 Images before the `dev` user ran as root, with up to seven volumes under
-`/root` and `/workspace` -- older deployments may have fewer. Moving a
-deployment is a one-off, and the old volumes stay untouched until you remove
-them yourself:
+`/root` and `/workspace` -- older deployments may have fewer -- and all of them
+on the `Dockerfile` build pack. Do this move first, on that build pack, and
+[move to Docker Compose](#moving-from-the-dockerfile-build-pack) after. It is a
+one-off, and the old volumes stay untouched until you remove them yourself:
 
 1. **Add the new volumes, and keep the old ones mounted.** Add `*-home` at
    `/home/dev` and `*-system` at `/var/lib/remote-claude`. If there is a
@@ -96,31 +106,41 @@ before `exec sshd` looking no different from a working one.
 
 ## Notes
 
-SSH host keys are persisted in the `*-system` volume. After a fresh setup, accept the key once. If you ever recreate that volume, clear the old key locally:
+SSH host keys are persisted in the `system` volume. After a fresh setup, accept the key once. If you ever recreate that volume, clear the old key locally:
 ```
 ssh-keygen -R '[<server-ip>]:2222'
 ```
 
-## Custom Docker Options
+## Moving from the Dockerfile build pack
 
-```
---ulimit nofile=65536:65536
-```
+Deployments before the compose file used the `Dockerfile` build pack, with the
+port mapping, the volumes and `--ulimit nofile=65536:65536` set by hand in the
+UI. Switching keeps the data, but the compose file's volumes are new ones, so
+it is copied across once:
 
-1024 descriptors is fine for shell sessions but not for a JetBrains backend,
-which opens far more than that while indexing.
+1. **Switch the build pack.** In the app's General settings set Build Pack to
+   `Docker Compose` and Docker Compose Location to `/docker-compose.yaml`.
+   Clear Port Mappings and Custom Docker Options; the compose file has both.
+   Fill in `SSH_PUBLIC_KEYS` and the rest, which Coolify now lists.
+2. **Deploy once, then stop the app.** That creates the new, empty volumes.
+3. **Copy each old volume into its new one** on the host. `docker volume ls`
+   shows both sets: the old `<uuid>-home`, `<uuid>-cache`, `<uuid>-system` and
+   the new `<uuid>_home`, `<uuid>_cache`, `<uuid>_system`.
+   ```bash
+   for v in home cache system; do
+     docker run --rm -v "<uuid>-$v:/from:ro" -v "<uuid>_$v:/to" debian:trixie \
+       cp -a /from/. /to/
+   done
+   ```
+   Copying `system` keeps the SSH host keys, so clients see the same host.
+4. **Start the app** and check the container log for `nofile limit: 65536`,
+   then log in and check `~/dev` and the agents' logins.
+5. **Remove the old volumes** from Persistent Storage once the new box has run
+   for a while.
 
-This line also used to carry `--cap-add SYS_ADMIN --device=/dev/fuse
---security-opt apparmor:unconfined`. Those were for the Browserless/Playwright
-wiring the image no longer installs; nothing left in it needs them, and they
-were handing every logged-in session more of the host than the box has any use
-for. Drop them from an existing deployment.
-
-This field is not part of the image, so recreating the app in the Coolify UI
-drops it and nothing fails visibly — the container is healthy and indexing dies
-with EMFILE. The entrypoint prints `nofile limit: <n>` at boot, so check the
-container log after a redeploy: anything below 4096 and the options above were
-not applied.
+The entrypoint prints `nofile limit: <n>` at boot and warns below 4096, which
+is what a deployment that runs the image without the compose file looks like:
+healthy, until a JetBrains backend dies indexing with EMFILE.
 
 ## Remote IDE (JetBrains)
 
