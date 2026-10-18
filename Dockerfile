@@ -89,6 +89,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     htop \
     procps \
+# The workstation layer -- what a person or an agent reaches for on a box they
+# work on, which a runtime image rightly leaves out.
+#
+# An editor: git, gh, git-spice and the agents' "open in editor" all launch
+# one, falling back to `vi` when nothing is set, so with none here every one
+# of them failed. vim also registers `vi` and `editor`. man-db because the base
+# keeps every package's man pages and nothing could read them.
+    vim \
+    man-db \
+# Native builds. Agents hit these in ordinary repos: an npm module with a
+# binding.gyp (node-gyp wants a compiler, make and python3), a Rust crate on
+# openssl-sys, a Python sdist with a C extension. pkg-config is how all three
+# find the headers, and these three headers are the ones they most often need.
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    zlib1g-dev \
+    libffi-dev \
+# Diagnosing the box from inside it: name resolution, reachability, a port or
+# file someone is holding (lsof is also how a JetBrains EMFILE gets traced to
+# its culprit), and what a stuck process is actually doing.
+    bind9-dnsutils \
+    iputils-ping \
+    netcat-openbsd \
+    lsof \
+    strace \
+# Moving files around: rsync for copying to and from the box, xz for the
+# .tar.xz most toolchains release as, zip next to the unzip already here,
+# file and tree for an agent finding its way around an unfamiliar repo.
+# openssh-client already arrives with the server, but git over ssh needs it
+# in its own right.
+    rsync \
+    xz-utils \
+    zip \
+    file \
+    tree \
+    openssh-client \
 # JetBrains remote development runs a full desktop IDE on the box and rasterizes
 # its UI server-side, so the backend's JBR loads libawt_xawt.so and needs the X
 # and font libraries even though nothing here has a display. Without them the
@@ -316,11 +353,12 @@ RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
        done \
     && rm -f /tmp/sshd-effective.conf /etc/ssh/ssh_host_*
 
+# Only the server-side helpers. cc and ch run on the laptop and ssh *to* the
+# box; shipped here they did nothing useful, and /usr/local/bin/cc shadowed
+# the C compiler that make and node-gyp invoke by that name.
 COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h
-COPY bin/cc /usr/local/bin/cc
-COPY bin/ch /usr/local/bin/ch
-RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/cc /usr/local/bin/ch
+RUN chmod +x /usr/local/bin/t /usr/local/bin/h
 
 COPY git-aliases.zsh /root/.git-aliases.zsh
 RUN cat > /root/.zshrc <<'ZSHRC'
