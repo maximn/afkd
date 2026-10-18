@@ -32,11 +32,24 @@ seed_legacy() {
     -v "${LEGACY_SHARE}:/root/.local/share" -v "${CACHE_VOL}:/root/.cache" \
     --entrypoint bash "$IMAGE" -s <<'SEED'
 set -e
-echo '{"permissions":{"defaultMode":"plan"}}' > /root/.claude/settings.json
+mkdir -p /root/.claude/hooks /root/.claude/plugins /root/.config/herdr /root/.config/other
+printf '#!/bin/sh\n' > /root/.claude/hooks/state.sh
+cat > /root/.claude/settings.json <<'JSON'
+{"permissions":{"defaultMode":"plan"},
+ "hooks":{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"bash '/root/.claude/hooks/state.sh' session"}]}]}}
+JSON
+echo '{"official":{"installLocation":"/root/.claude/plugins/marketplaces/official"}}' \
+  > /root/.claude/plugins/known_marketplaces.json
+printf '[projects."/root/dev"]\ntrust_level = "trusted"\n' > /root/.codex/config.toml
+cat > /root/.codex/hooks.json <<'JSON'
+{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash '/root/.codex/state.sh' session"}]}]}}
+JSON
+printf '[worktree]\ndirectory = "/root/dev/wt"\n' > /root/.config/herdr/config.toml
+echo 'workdir=/root/dev/x' > /root/.config/other/app.conf
 echo '{"oauthAccount":{"emailAddress":"ada@example.com"},"projects":{"/root/dev/app":{"hasTrustDialogAccepted":true},"/srv/other":{"x":1}}}' \
   > /root/.claude/.claude.json
 mkdir -p /root/.claude/projects/-root-dev-app /root/.claude/projects/-srv-other
-echo '{}' > /root/.claude/projects/-root-dev-app/session.jsonl
+echo '{"cwd":"/root/dev/app"}' > /root/.claude/projects/-root-dev-app/session.jsonl
 echo '{}' > /root/.claude/projects/-srv-other/session.jsonl
 mkdir -p /root/.config/gh
 echo 'github.com: {}' > /root/.config/gh/hosts.yml
@@ -97,6 +110,81 @@ start_legacy_box() {
 
   # Everything is dev's, the reused cache included, so git trusts the repos
   # and nothing needs sudo to update.
+  run in_box find /home/dev ! -user dev
+  [ -z "$output" ]
+  run as_dev git -C dev/app status --short
+  [ "$status" -eq 0 ]
+}
+
+# Tools keep absolute paths in their own config, not only in .claude.json. Left
+# pointing into /root -- which dev cannot even traverse -- a hook fails on every
+# start ("bash: /root/.claude/hooks/...: Permission denied"), Codex forgets which
+# projects it trusts and herdr puts worktrees outside the persisted home. All of
+# it was found on the first real migration.
+@test "rewrites /root paths in the tools' config" {
+  seed_legacy
+  start_legacy_box
+
+  run as_dev sudo -n rcc-migrate
+  [ "$status" -eq 0 ]
+
+  run as_dev jq -r '.hooks.SessionStart[0].hooks[0].command' .claude/settings.json
+  [ "$output" = "bash '/home/dev/.claude/hooks/state.sh' session" ]
+  run as_dev jq -r '.official.installLocation' .claude/plugins/known_marketplaces.json
+  [ "$output" = "/home/dev/.claude/plugins/marketplaces/official" ]
+  run as_dev jq -r '.hooks.SessionStart[0].hooks[0].command' .codex/hooks.json
+  [ "$output" = "bash '/home/dev/.codex/state.sh' session" ]
+  run as_dev grep -x '\[projects."/home/dev/dev"\]' .codex/config.toml
+  [ "$status" -eq 0 ]
+  run as_dev grep -x 'directory = "/home/dev/dev/wt"' .config/herdr/config.toml
+  [ "$status" -eq 0 ]
+
+  # And the hook the error came from actually runs as dev.
+  run as_dev zsh -c "$(jq -r '.hooks.SessionStart[0].hooks[0].command' /home/dev/.claude/settings.json)"
+  [ "$status" -eq 0 ]
+
+  # Transcripts are a record of what happened at the time, under the old path.
+  run as_dev cat .claude/projects/-home-dev-dev-app/session.jsonl
+  [ "$output" = '{"cwd":"/root/dev/app"}' ]
+}
+
+# A config file the script knows nothing about is not rewritten blind, but it
+# is not left to be found by its symptoms either.
+@test "names the files it did not rewrite that still mention /root" {
+  seed_legacy
+  start_legacy_box
+
+  run as_dev sudo -n rcc-migrate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/home/dev/.config/other/app.conf"* ]]
+  [[ "$output" != *"session.jsonl"* ]]
+
+  run as_dev cat .config/other/app.conf
+  [ "$output" = "workdir=/root/dev/x" ]
+}
+
+# The runbook was written against a deployment with every volume; the first
+# real one had no cache and no .local/share volume at all. Whatever subset a
+# deployment has, migrating it works, and a brand-new cache volume is dev's.
+@test "migrates a deployment that only ever had some of the volumes" {
+  local claude dev
+  claude="$(make_volume)"
+  dev="$(make_volume)"
+  docker run --rm -i --label "${LABEL}=1" \
+    -v "${claude}:/root/.claude" -v "${dev}:/root/dev" \
+    --entrypoint bash "$IMAGE" -s <<'SEED'
+set -e
+echo '{"projects":{"/root/dev/app":{}}}' > /root/.claude/.claude.json
+git init -q /root/dev/app
+SEED
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -v "${claude}:/root/.claude" -v "${dev}:/root/dev"
+  wait_ready
+
+  run as_dev sudo -n rcc-migrate
+  [ "$status" -eq 0 ]
+
+  run as_dev jq -c '.projects | keys' .claude.json
+  [ "$output" = '["/home/dev/dev/app"]' ]
   run in_box find /home/dev ! -user dev
   [ -z "$output" ]
   run as_dev git -C dev/app status --short
