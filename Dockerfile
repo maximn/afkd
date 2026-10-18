@@ -128,6 +128,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     file \
     tree \
     openssh-client \
+# A directory listing with each file's git status, behind the ll/la/lt aliases
+# in remote-claude.zshrc. Plain `ls` stays GNU ls: an agent's shell can read
+# that config too, and agents parse what ls prints.
+    eza \
 # JetBrains remote development runs a full desktop IDE on the box and rasterizes
 # its UI server-side, so the backend's JBR loads libawt_xawt.so and needs the X
 # and font libraries even though nothing here has a display. Without them the
