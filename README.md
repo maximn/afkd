@@ -19,6 +19,9 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 | Shell | `zsh` + [starship](https://starship.rs), `fzf`, git aliases |
 | Git | `git`, `git-crypt`, `gh`, [git-spice](https://abhinav.github.io/git-spice/) |
 | Search | `ripgrep`, `fd`, `jq` |
+| Editing | `vim` (also `vi` and `editor`, set as `EDITOR`/`VISUAL`), man pages |
+| Building | `gcc`/`g++`, `make`, `pkg-config`, OpenSSL, zlib and libffi headers — enough for node-gyp, `openssl-sys` and most Python sdists |
+| Diagnostics | `dig`, `ping`, `nc`, `lsof`, `strace`, `htop` |
 | Reading | [glow](https://github.com/charmbracelet/glow) (Markdown in the terminal) |
 | Access | `openssh-server` (key auth only), `xterm-ghostty` terminfo |
 

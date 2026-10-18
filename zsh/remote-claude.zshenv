@@ -23,3 +23,8 @@ export NPM_CONFIG_CACHE="$HOME/.cache/npm"
 # package manager is fetched -- which an agent's non-interactive shell never
 # answers.
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+# What git, gh, git-spice, crontab and the agents open for an edit. Set
+# explicitly rather than left to the `vi` fallback: Claude Code and Codex read
+# VISUAL/EDITOR themselves and have no fallback of their own.
+export EDITOR=vim VISUAL=vim
