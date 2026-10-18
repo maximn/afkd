@@ -52,19 +52,20 @@ that already holds files is left alone, with a warning in the container log.
 
 ## Migrating from the root layout
 
-Images before the `dev` user ran as root, with seven volumes under `/root` and
-`/workspace`. Moving a deployment is a one-off, and the old volumes stay
-untouched until you remove them yourself:
+Images before the `dev` user ran as root, with up to seven volumes under
+`/root` and `/workspace` -- older deployments may have fewer. Moving a
+deployment is a one-off, and the old volumes stay untouched until you remove
+them yourself:
 
 1. **Add the new volumes, and keep the old ones mounted.** Add `*-home` at
-   `/home/dev` and `*-system` at `/var/lib/remote-claude`, and change the
-   existing `*-cache` mount path from `/root/.cache` to `/home/dev/.cache` (the
-   cache is reused, not copied). Leave `/root/.claude`, `/root/.config`,
-   `/root/.codex`, `/root/dev`, `/root/.local/share` and `/workspace` where
-   they are.
+   `/home/dev` and `*-system` at `/var/lib/remote-claude`. If there is a
+   `*-cache` at `/root/.cache`, change its mount path to `/home/dev/.cache`
+   (the cache is reused, not copied); otherwise add one there. Leave
+   whichever of `/root/.claude`, `/root/.config`, `/root/.codex`, `/root/dev`,
+   `/root/.local/share` and `/workspace` you have where they are.
 2. **Deploy.** The entrypoint adopts the SSH host keys from `/root/.config`,
-   so the box comes back as the same host. Expect a warning that
-   `/home/dev/.cache` is owned by root; the next step fixes it.
+   so the box comes back as the same host. A reused cache comes up owned by
+   root, with a warning in the log; the next step fixes it.
 3. **Log in as dev.** Root no longer logs in at all. Set `User dev` in your
    `~/.ssh/config` ([ssh.md](ssh.md)).
 4. **Migrate:**
