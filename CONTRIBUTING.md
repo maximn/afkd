@@ -12,7 +12,10 @@ follow from that, and they shape most of the review feedback here:
    that exits; a malformed `GITHUB_SSH_KEY` is not.
 2. **Secrets arrive as environment variables and are never committed.** Values
    can contain spaces, quotes, `$` and newlines, so anything that writes them
-   to a file quotes them properly. `.zshenv` uses `printf %q` for this reason.
+   to a file quotes them properly. The forwarded-env file uses `printf %q`
+   for this reason. They are written under `/run/remote-claude` or `/etc`,
+   never into home: home is persisted, and a secret that lands there outlives
+   its removal from the deployment.
 
 ## Working on it
 

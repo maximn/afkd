@@ -22,6 +22,7 @@ ssh_box() {
     -o BatchMode=yes \
     -o ConnectTimeout=5 \
     -o LogLevel=ERROR \
+    -o IdentitiesOnly=yes \
     root@127.0.0.1 "$@"
 }
 
@@ -75,6 +76,18 @@ wait_auth_refusal() {
   # authorized_keys handling broken wide open.
   start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="ssh-ed25519 AAAAnotyourkey nobody@nowhere"
   wait_ready
+
+  wait_auth_refusal
+}
+
+# Home is becoming a volume, and a volume outlives every key rotation. A key
+# that once made it into ~/.ssh/authorized_keys -- written by an older image,
+# or added by hand -- must not keep working after it leaves SSH_PUBLIC_KEYS:
+# sshd reads the root-owned file the entrypoint rebuilds, and nothing in home.
+@test "ignores a key left behind in ~/.ssh/authorized_keys" {
+  start_box -p 127.0.0.1::22 -e SSH_PUBLIC_KEYS="ssh-ed25519 AAAAnotyourkey nobody@nowhere"
+  wait_ready
+  in_box sh -c "mkdir -p /root/.ssh && printf '%s\n' '$PUBKEY' > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"
 
   wait_auth_refusal
 }

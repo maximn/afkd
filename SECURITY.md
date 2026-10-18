@@ -21,10 +21,16 @@ Design decisions that follow from that:
   of those took effect. The entrypoint refuses to boot with an empty
   `SSH_PUBLIC_KEYS` rather than come up unreachable.
 - **Secrets are injected as environment variables**, never baked into the image
-  or committed. `.zshenv`, `settings.json` and any private key material are
-  written `0600`, each under a `umask` so it is never briefly world-readable,
-  and values interpolated into the agent's notification hooks are shell-quoted
-  rather than wrapped in hand-written quotes.
+  or committed, and never written into home. The entrypoint rebuilds them on
+  every boot outside the persisted volumes -- forwarded tokens and the GitHub
+  key under `/run/remote-claude`, the ntfy hooks in Claude Code's managed
+  settings -- so unsetting one on the deployment removes it from the box. Each
+  is written `0600` under a `umask` so it is never briefly world-readable, and
+  values interpolated into the notification hooks are shell-quoted rather than
+  wrapped in hand-written quotes.
+- **Authorized keys come only from `SSH_PUBLIC_KEYS`.** sshd reads a root-owned
+  file the entrypoint rewrites on every boot, never `~/.ssh/authorized_keys`,
+  so a key dropped from the deployment stops working on the next boot.
 - **The container runs as root, with no added capabilities.** It used to be
   given `SYS_ADMIN`, `/dev/fuse` and `apparmor:unconfined`; those were for the
   Browserless/Playwright wiring the image no longer installs, and a capability
