@@ -368,6 +368,23 @@ assert_github_key_usable() {
   [ "$output" = "dev 600" ]
 }
 
+# Compose passes a referenced-but-unset ${VAR} as an empty string, not as
+# unset, so a deployment that declares every optional variable sets all of them.
+# Forwarded as-is, an empty GH_TOKEN or ANTHROPIC_API_KEY reaches every session
+# and reads as "this credential, and it is blank" to whatever looks for it.
+@test "skips forwarded vars that are set but empty" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+    -e GH_TOKEN= -e ANTHROPIC_API_KEY= -e CLAUDE_CODE_USE_BEDROCK= -e CODEX_HOME=/home/dev/.codex
+  wait_ready
+
+  run in_box grep -cE 'GH_TOKEN|ANTHROPIC_API_KEY|CLAUDE_CODE_USE_BEDROCK' /run/remote-claude/env.zsh
+  [ "$output" = "0" ]
+
+  run as_dev env -u GH_TOKEN zsh -c '[ -z "${GH_TOKEN+x}" ] && printf %s "$CODEX_HOME"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/dev/.codex" ]
+}
+
 # The forwarded values are API keys and tokens. Written under /run they are
 # rebuilt from the environment on every boot, so unsetting one on the
 # deployment removes it from the box -- and none of them is ever written to
