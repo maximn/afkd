@@ -141,7 +141,7 @@ for path in "$SOURCE_HOME"/.claude/settings.json "$SOURCE_HOME"/.claude/plugins/
             "$SOURCE_HOME"/.config/herdr/config.toml; do
   # A symlink would be replaced by a plain file, cutting it off from whatever
   # it points at; leaving it for the hand-check list below is safer.
-  [ -f "$path" ] && [ ! -L "$path" ] || continue
+  if [ ! -f "$path" ] || [ -L "$path" ]; then continue; fi
   perl -ne 'exit 1 if m{$ENV{ROOT_PATH}}' "$path" && continue
   file="${path#"$SOURCE_HOME"/}"
   rewritten+=("$file")
