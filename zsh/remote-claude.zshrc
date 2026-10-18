@@ -21,4 +21,10 @@ eval "$(starship init zsh)"
 source <(fzf --zsh)
 eval "$(gs shell completion zsh)"
 
+# eza under names of its own rather than over ls: an agent's shell can read
+# this file too, and what ls prints is what it parses.
+alias ll='eza -l --git --group-directories-first'
+alias la='eza -la --git --group-directories-first'
+alias lt='eza -T --git-ignore -L 2'
+
 cd ~/dev 2>/dev/null

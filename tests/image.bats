@@ -32,7 +32,7 @@ dockerfile_arg() {
     fzf starship glow git-spice gs herdr claude codex \
     mise node npm npx corepack yarn pnpm \
     vi vim editor man gcc g++ pkg-config \
-    dig ping nc lsof strace file tree rsync xz zip ssh \
+    dig ping nc lsof strace file tree eza rsync xz zip ssh \
     t h; do
     run in_box sh -c "command -v $tool"
     [ "$status" -eq 0 ] || {
@@ -291,6 +291,22 @@ interactive() {
   run interactive 'alias gst'
   [ "$status" -eq 0 ]
   [[ "$output" == *"git status"* ]]
+}
+
+# eza gets names of its own. ls stays GNU ls, because an agent's shell can read
+# the same config and parses what ls prints. --git is asserted by running it:
+# a build without the git feature rejects the flag rather than ignoring it.
+@test "lists with eza under ll/la/lt and leaves ls alone" {
+  run interactive 'alias ll'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"eza -l --git"* ]]
+
+  run interactive 'alias ls'
+  [ "$status" -ne 0 ]
+
+  run interactive 'll /'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"etc"* ]]
 }
 
 # The image's shell config lives under /etc and /usr/local/share, sourced from
