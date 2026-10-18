@@ -1,0 +1,6 @@
+# Copied to /etc/codex/config.toml by the Dockerfile: Codex's system layer, the
+# lowest-precedence config, so anything in ~/.codex/config.toml still wins.
+#
+# The image pins Codex and rebuilds to change it. Left on, the startup check
+# finds a newer release and offers an update the box has no business taking.
+check_for_update_on_startup = false

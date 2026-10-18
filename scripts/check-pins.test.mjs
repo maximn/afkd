@@ -51,13 +51,23 @@ rejects('an annotation with no ARG under it',
 // The subtle one: reads fine, invisible to Renovate. This is the shape of the
 // bug that went unnoticed for five months.
 rejects('an annotation whose keys are in the wrong order',
-  (s) => s.replace('# renovate: datasource=npm depName=@openai/codex',
-    '# renovate: depName=@openai/codex datasource=npm'),
+  (s) => s.replace('# renovate: datasource=npm depName=@anthropic-ai/claude-code',
+    '# renovate: depName=@anthropic-ai/claude-code datasource=npm'),
   'never bump it')
 
 rejects('an unpinned global npm install',
   (s) => `${s}\nRUN npm install -g some-new-tool\n`,
   'without a version')
+
+// apt pins exact versions only for packages from repos that keep their old
+// releases (Claude Code's does). A version typed in by hand is one Renovate
+// cannot see, so it has to come from an annotated ARG like every other pin.
+rejects('an apt package pinned to a literal version',
+  (s) => `${s}\nRUN apt-get update && apt-get install -y --no-install-recommends some-tool=1.2.3-1\n`,
+  'apt package')
+
+accepts('an apt package pinned through an ARG',
+  (s) => `${s}\nRUN apt-get update && apt-get install -y "some-tool=\${SOME_TOOL_VERSION}-1"\n`)
 
 rejects('a "latest" release URL',
   (s) => `${s}\nRUN curl -fsSL https://github.com/o/r/releases/latest/download/x -o /usr/local/bin/x\n`,
