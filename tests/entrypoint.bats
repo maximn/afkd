@@ -19,7 +19,7 @@ teardown() {
 @test "refuses to start when SSH_PUBLIC_KEYS is unset" {
   local vol
   vol="$(make_volume)"
-  run docker run --rm --label "${LABEL}=1" -v "${vol}:/root/.config" "$IMAGE"
+  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/remote-claude" "$IMAGE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SSH_PUBLIC_KEYS is empty"* ]]
 }
@@ -27,19 +27,17 @@ teardown() {
 @test "refuses to start when SSH_PUBLIC_KEYS is empty" {
   local vol
   vol="$(make_volume)"
-  run docker run --rm --label "${LABEL}=1" -v "${vol}:/root/.config" \
+  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/remote-claude" \
     -e SSH_PUBLIC_KEYS= "$IMAGE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SSH_PUBLIC_KEYS is empty"* ]]
 }
 
 @test "boots with no volumes mounted" {
-  # Nothing in the image creates /root/.config, but the entrypoint copies host
-  # keys into it on first boot. A deployment always mounts a volume there; a
+  # Nothing in the image creates /var/lib/remote-claude, but the entrypoint
+  # keeps the host keys there. A deployment always mounts a volume on it; a
   # bare `docker run` must still work, or the image is undebuggable locally.
-  BOX="rcc-ci-$$-${RANDOM}"
-  docker run -d --name "$BOX" --label "${LABEL}=1" \
-    -e SSH_PUBLIC_KEYS="$PUBKEY" "$IMAGE" >/dev/null
+  boot_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 }
 
@@ -51,17 +49,103 @@ teardown() {
   start_box -e SSH_PUBLIC_KEYS="${PUBKEY}"$'\n'"ssh-ed25519 AAAAsecondkey other@host"
   wait_ready
 
-  run in_box wc -l /etc/ssh/authorized_keys/root
+  run in_box wc -l /etc/ssh/authorized_keys/dev
   [[ "$output" == 2* ]]
 
-  run in_box grep -cF "$PUBKEY_BARE" /etc/ssh/authorized_keys/root
+  run in_box grep -cF "$PUBKEY_BARE" /etc/ssh/authorized_keys/dev
   [ "$output" = "1" ]
 
-  run in_box stat -c '%U %a' /etc/ssh/authorized_keys/root
+  run in_box stat -c '%U %a' /etc/ssh/authorized_keys/dev
   [ "$output" = "root 644" ]
 
-  run in_box test -e /root/.ssh/authorized_keys
+  run in_box test -e /home/dev/.ssh/authorized_keys
   [ "$status" -ne 0 ]
+
+  # Nobody logs in as root, so nothing should be authorized as root either.
+  run in_box test -e /etc/ssh/authorized_keys/root
+  [ "$status" -ne 0 ]
+}
+
+# --- SSH host keys -------------------------------------------------------------
+
+HOST_KEYS=/var/lib/remote-claude/ssh
+
+@test "keeps the host keys on the system volume, readable by root alone" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box stat -c '%U %a' "$HOST_KEYS" "$HOST_KEYS/ssh_host_ed25519_key"
+  [ "$output" = $'root 700\nroot 600' ]
+
+  # Not in home: dev owns home, and a host private key it could read is one it
+  # could impersonate the box with.
+  run in_box sh -c 'ls /home/dev/.config/ssh_host_* 2>/dev/null'
+  [ -z "$output" ]
+}
+
+# Before the dev user, the keys were persisted in /root/.config. The first
+# boot of this image on that deployment -- the one rcc-migrate runs on -- has
+# to come up as the same host, or every client sees its key change.
+@test "adopts the host keys an older image persisted in /root/.config" {
+  local legacy want
+  legacy="$(make_volume)"
+  docker run --rm --label "${LABEL}=1" -v "${legacy}:/root/.config" \
+    --entrypoint sh "$IMAGE" -c 'ssh-keygen -A >/dev/null && cp /etc/ssh/ssh_host_*_key* /root/.config/'
+  want="$(docker run --rm --label "${LABEL}=1" -v "${legacy}:/root/.config" \
+    --entrypoint ssh-keygen "$IMAGE" -lf /root/.config/ssh_host_ed25519_key.pub)"
+
+  start_box -v "${legacy}:/root/.config" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box ssh-keygen -lf "$HOST_KEYS/ssh_host_ed25519_key.pub"
+  [ -n "$want" ]
+  [ "$output" = "$want" ]
+
+  run in_box stat -c '%U %a' "$HOST_KEYS/ssh_host_ed25519_key"
+  [ "$output" = "root 600" ]
+}
+
+# --- home ---------------------------------------------------------------------
+
+@test "hands dev a home it owns, with the seeded files in it" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box stat -c '%U' /home/dev /home/dev/.cache /home/dev/.zshrc \
+    /home/dev/.claude /home/dev/.claude/settings.json /home/dev/dev
+  [ "$output" = $'dev\ndev\ndev\ndev\ndev\ndev' ]
+}
+
+# Docker seeds an empty named volume from the image's /home/dev, which is
+# where the ownership and the skeleton files come from. Nothing documents
+# that every host does it -- a bind mount never does -- so an empty,
+# root-owned home is made dev's and given the skeleton at boot.
+@test "makes an unseeded empty home usable" {
+  boot_box --tmpfs /home/dev -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run in_box stat -c '%U' /home/dev /home/dev/.zshrc /home/dev/.claude/settings.json
+  [ "$output" = $'dev\ndev\ndev' ]
+}
+
+# A home that is not dev's and not empty is somebody's data -- most likely
+# the old /root volumes mounted at the new path. Taking it over recursively
+# is not the entrypoint's call, and refusing to boot would lock out the one
+# person who can fix it, so it says so and comes up.
+@test "warns about a home dev does not own, and still boots" {
+  local vol
+  vol="$(make_volume)"
+  docker run --rm --label "${LABEL}=1" -v "${vol}:/home/dev" \
+    --entrypoint sh "$IMAGE" -c 'chown -R root:root /home/dev'
+
+  HOME_VOL="$vol" start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run box_logs
+  [[ "$output" == *"warning: /home/dev is owned by root"* ]]
+
+  run in_box stat -c '%U' /home/dev
+  [ "$output" = "root" ]
 }
 
 # --- git identity ------------------------------------------------------------
@@ -79,7 +163,7 @@ teardown() {
 
   # System-level, so a ~/.gitconfig of the user's own still wins, and the
   # deployment's identity never lands in home.
-  run in_box test -e /root/.gitconfig
+  run in_box test -e /home/dev/.gitconfig
   [ "$status" -ne 0 ]
 }
 
@@ -130,23 +214,25 @@ GITHUB_KEY=/run/remote-claude/github_ed25519
 # `ssh -G` prints the configuration after every Include has been merged. Its
 # stderr goes: OpenSSH 10 warns there about a pty whenever stdin is not one.
 assert_ssh_uses_github_key() {
-  run in_box sh -c 'ssh -G github.com 2>/dev/null | grep -i "^identityfile "'
+  run as_dev sh -c 'ssh -G github.com 2>/dev/null | grep -i "^identityfile "'
   [ "$output" = "identityfile ${GITHUB_KEY}" ]
 }
 
+# Read as dev, since that is who runs git: ssh refuses a key that is not
+# private to the user reading it, and a root-only file is unreadable.
 assert_github_key_usable() {
   # ssh-keygen echoes the comment stored in the private key, so compare the
   # type and blob only.
-  run in_box sh -c "ssh-keygen -y -f ${GITHUB_KEY} | cut -d' ' -f1,2"
+  run as_dev sh -c "ssh-keygen -y -f ${GITHUB_KEY} | cut -d' ' -f1,2"
   [ "$status" -eq 0 ]
   [ "$output" = "$PUBKEY_BARE" ]
 
-  run in_box stat -c '%a' "$GITHUB_KEY"
-  [ "$output" = "600" ]
+  run in_box stat -c '%U %a' "$GITHUB_KEY"
+  [ "$output" = "dev 600" ]
 
   assert_ssh_uses_github_key
 
-  run in_box sh -c 'ls /root/.ssh/github* 2>/dev/null'
+  run in_box sh -c 'ls /home/dev/.ssh/github* 2>/dev/null'
   [ -z "$output" ]
 }
 
@@ -216,7 +302,7 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box sh -c 'ls /etc/ssh/ssh_config.d/*github* /root/.ssh/config 2>/dev/null'
+  run in_box sh -c 'ls /etc/ssh/ssh_config.d/*github* /home/dev/.ssh/config 2>/dev/null'
   [ -z "$output" ]
 }
 
@@ -233,8 +319,8 @@ assert_github_key_usable() {
   [[ "$output" == *"could not reach github.com"* ]]
 
   # Everything that does not need the network still has to have happened.
-  run in_box stat -c '%a' "$GITHUB_KEY"
-  [ "$output" = "600" ]
+  run in_box stat -c '%U %a' "$GITHUB_KEY"
+  [ "$output" = "dev 600" ]
 
   assert_ssh_uses_github_key
 }
@@ -252,7 +338,7 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY="$awkward"
   wait_ready
 
-  run in_box env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
+  run as_dev env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
   [ "$status" -eq 0 ]
   [ "$output" = "$awkward" ]
 }
@@ -261,25 +347,25 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e ANTHROPIC_API_KEY=$'line one\nline two'
   wait_ready
 
-  run in_box env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
+  run as_dev env -u ANTHROPIC_API_KEY zsh -c 'printf %s "$ANTHROPIC_API_KEY"'
   [ "$status" -eq 0 ]
   [ "$output" = $'line one\nline two' ]
 }
 
 @test "forwards CLAUDE_* and CODEX_* vars and skips unset ones" {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
-    -e CLAUDE_CODE_USE_BEDROCK=1 -e CODEX_HOME=/root/.codex
+    -e CLAUDE_CODE_USE_BEDROCK=1 -e CODEX_HOME=/home/dev/.codex
   wait_ready
 
-  run in_box env -u CLAUDE_CODE_USE_BEDROCK -u CODEX_HOME \
+  run as_dev env -u CLAUDE_CODE_USE_BEDROCK -u CODEX_HOME \
     zsh -c 'printf "%s|%s" "$CLAUDE_CODE_USE_BEDROCK" "$CODEX_HOME"'
-  [ "$output" = "1|/root/.codex" ]
+  [ "$output" = "1|/home/dev/.codex" ]
 
   run in_box grep -c 'GH_TOKEN' /run/remote-claude/env.zsh
   [ "$output" = "0" ]
 
-  run in_box stat -c '%a' /run/remote-claude/env.zsh
-  [ "$output" = "600" ]
+  run in_box stat -c '%U %a' /run/remote-claude/env.zsh
+  [ "$output" = "dev 600" ]
 }
 
 # The forwarded values are API keys and tokens. Written under /run they are
@@ -292,7 +378,7 @@ assert_github_key_usable() {
     -e GH_TOKEN="$secret" -e NTFY_URL=https://ntfy.example.com/c -e NTFY_TOKEN="$secret"
   wait_ready
 
-  run in_box grep -rlF "$secret" /root
+  run in_box grep -rlF "$secret" /home/dev /root
   [ -z "$output" ]
 }
 
@@ -302,10 +388,10 @@ assert_github_key_usable() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box jq -e '.permissions.defaultMode' /root/.claude/settings.json
+  run in_box jq -e '.permissions.defaultMode' /home/dev/.claude/settings.json
   [ "$status" -eq 0 ]
 
-  run in_box jq -e '.hooks' /root/.claude/settings.json
+  run in_box jq -e '.hooks' /home/dev/.claude/settings.json
   [ "$status" -ne 0 ]
 }
 
@@ -328,13 +414,16 @@ NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
   [ "$status" -eq 0 ]
   [[ "$output" == *"turn complete"* ]]
 
-  # It holds a bearer token. Every other secret file here has had a mode
-  # assertion since the day it was written.
-  run in_box stat -c '%a' "$NTFY_SETTINGS"
-  [ "$output" = "600" ]
+  # It holds a bearer token, so it is readable by root and by the group of the
+  # one user Claude Code runs as, and nobody else.
+  run in_box stat -c '%U:%G %a' "$NTFY_SETTINGS"
+  [ "$output" = "root:dev 640" ]
+
+  run as_dev jq -e '.hooks.Stop' "$NTFY_SETTINGS"
+  [ "$status" -eq 0 ]
 
   # The user's own settings stay untouched.
-  run in_box jq -e '.hooks' /root/.claude/settings.json
+  run in_box jq -e '.hooks' /home/dev/.claude/settings.json
   [ "$status" -ne 0 ]
 }
 
@@ -353,8 +442,7 @@ NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
 @test "removes notification hooks an older image merged into settings.json" {
   local vol
   vol="$(make_volume)"
-  docker run --rm -i --label "${LABEL}=1" -v "${vol}:/root/.claude" \
-    --entrypoint sh "$IMAGE" -c 'cat > /root/.claude/settings.json' <<'JSON'
+  seed_home "$vol" 'mkdir -p ~/.claude && cat > ~/.claude/settings.json' <<'JSON'
 {
   "permissions": {"defaultMode": "plan"},
   "hooks": {
@@ -370,22 +458,22 @@ NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
 }
 JSON
 
-  start_box -v "${vol}:/root/.claude" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  HOME_VOL="$vol" start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box grep -c tk_old /root/.claude/settings.json
+  run in_box grep -c tk_old /home/dev/.claude/settings.json
   [ "$output" = "0" ]
 
-  run in_box jq -c '[.hooks.Stop[].hooks[].command]' /root/.claude/settings.json
+  run in_box jq -c '[.hooks.Stop[].hooks[].command]' /home/dev/.claude/settings.json
   [ "$output" = '["echo mine"]' ]
 
-  run in_box jq -e '.hooks.Notification' /root/.claude/settings.json
+  run in_box jq -e '.hooks.Notification' /home/dev/.claude/settings.json
   [ "$status" -ne 0 ]
 
-  run in_box jq -re '.hooks.PreToolUse[0].hooks[0].command' /root/.claude/settings.json
+  run in_box jq -re '.hooks.PreToolUse[0].hooks[0].command' /home/dev/.claude/settings.json
   [ "$output" = "echo also mine" ]
 
-  run in_box jq -re '.permissions.defaultMode' /root/.claude/settings.json
+  run in_box jq -re '.permissions.defaultMode' /home/dev/.claude/settings.json
   [ "$output" = "plan" ]
 }
 
@@ -394,24 +482,22 @@ JSON
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box stat -c '%a' /root/.claude/settings.json
+  run in_box stat -c '%a' /home/dev/.claude/settings.json
   [ "$output" = "600" ]
 }
 
 @test "relocks a settings.json restored from a volume written by an older image" {
   # Volumes outlive images. A box redeployed onto this version has to repair
-  # the 0644 file its predecessor left in /root/.claude, not just get the mode
-  # right on the files it creates itself.
+  # the 0644 file its predecessor left behind, not just get the mode right on
+  # the files it creates itself.
   local vol
   vol="$(make_volume)"
-  docker run --rm --label "${LABEL}=1" -v "${vol}:/root/.claude" \
-    --entrypoint sh "$IMAGE" -c \
-    'echo "{}" > /root/.claude/settings.json; chmod 644 /root/.claude/settings.json'
+  seed_home "$vol" 'mkdir -p ~/.claude && echo "{}" > ~/.claude/settings.json && chmod 644 ~/.claude/settings.json'
 
-  start_box -v "${vol}:/root/.claude" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  HOME_VOL="$vol" start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box stat -c '%a' /root/.claude/settings.json
+  run in_box stat -c '%a' /home/dev/.claude/settings.json
   [ "$output" = "600" ]
 }
 
@@ -496,16 +582,15 @@ assert_not_injected() {
 @test "never overwrites a settings.json from a persisted volume" {
   local vol
   vol="$(make_volume)"
-  docker run --rm --label "${LABEL}=1" -v "${vol}:/root/.claude" \
-    --entrypoint sh "$IMAGE" -c \
-    'printf "%s" "{\"permissions\":{\"defaultMode\":\"plan\"},\"mine\":true}" > /root/.claude/settings.json'
+  seed_home "$vol" \
+    'mkdir -p ~/.claude && printf "%s" "{\"permissions\":{\"defaultMode\":\"plan\"},\"mine\":true}" > ~/.claude/settings.json'
 
-  start_box -v "${vol}:/root/.claude" -e SSH_PUBLIC_KEYS="$PUBKEY"
+  HOME_VOL="$vol" start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run in_box jq -re '.mine' /root/.claude/settings.json
+  run in_box jq -re '.mine' /home/dev/.claude/settings.json
   [ "$output" = "true" ]
 
-  run in_box jq -re '.permissions.defaultMode' /root/.claude/settings.json
+  run in_box jq -re '.permissions.defaultMode' /home/dev/.claude/settings.json
   [ "$output" = "plan" ]
 }

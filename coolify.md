@@ -29,25 +29,60 @@ the agent credentials and the optional ntfy notifications not shown here.
 
 | Volume Name | Mount Path | Purpose |
 |---|---|---|
-| `*-workspace` | `/workspace` | Working directory |
-| `*-claude-config` | `/root/.claude` | Claude Code auth, settings, sessions |
-| `*-dotconfig` | `/root/.config` | App configs (gh, starship, etc.) |
-| `*-codex` | `/root/.codex` | Codex CLI auth and settings |
-| `*-dev` | `/root/dev` | Development projects |
-| `*-cache` | `/root/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
-| `*-localshare` | `/root/.local/share` | JetBrains backend plugins and per-project data |
+| `*-home` | `/home/dev` | All of dev's home: agent auth, settings and sessions (`~/.claude`, `~/.claude.json`, `~/.codex`), app configs (`~/.config`), projects (`~/dev`), JetBrains plugins (`~/.local/share`), your own dotfiles |
+| `*-cache` | `/home/dev/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
+| `*-system` | `/var/lib/remote-claude` | The SSH host keys, kept out of home so dev cannot read them |
 
-Size the cache volume with headroom — a JetBrains backend is ~1.5 GB before
-indexes. Nothing in it is worth backing up, but a *full* volume fails at write
-time in the middle of work, which is worse than a cold cache. Caches also no
-longer reset on redeploy, so a corrupt one has to be cleared by hand with
-`rm -rf /root/.cache/<subdir>`.
+Home is one volume rather than one per directory. Anything a tool writes there
+survives a redeploy, including the tools nobody thought to give a volume, and
+the image keeps nothing of its own in home: its shell config, Node and the
+agents live under `/etc`, `/usr` and `/opt`, so a long-lived home still picks
+up every image change.
 
-`/root/.local/share` is a separate volume because JetBrains splits its state
-three ways: settings land in `/root/.config`, the backend and its indexes in
-`/root/.cache`, and installed plugins in `/root/.local/share`. Without the third
-one, plugins disappear on redeploy while everything around them survives, which
-reads as the IDE randomly breaking rather than as a missing volume.
+The cache is separate so it can be sized, and cleared, on its own. Size it with
+headroom — a JetBrains backend is ~1.5 GB before indexes. Nothing in it is
+worth backing up, but a *full* volume fails at write time in the middle of
+work, which is worse than a cold cache. Caches don't reset on redeploy, so a
+corrupt one has to be cleared by hand with `rm -rf ~/.cache/<subdir>`.
+
+Docker seeds an empty volume from the image, so a fresh `*-home` starts as
+dev's, with the skeleton dotfiles in it. Where that doesn't happen, the
+entrypoint hands an empty home to dev itself. A home that dev doesn't own and
+that already holds files is left alone, with a warning in the container log.
+
+## Migrating from the root layout
+
+Images before the `dev` user ran as root, with seven volumes under `/root` and
+`/workspace`. Moving a deployment is a one-off, and the old volumes stay
+untouched until you remove them yourself:
+
+1. **Add the new volumes, and keep the old ones mounted.** Add `*-home` at
+   `/home/dev` and `*-system` at `/var/lib/remote-claude`, and change the
+   existing `*-cache` mount path from `/root/.cache` to `/home/dev/.cache` (the
+   cache is reused, not copied). Leave `/root/.claude`, `/root/.config`,
+   `/root/.codex`, `/root/dev`, `/root/.local/share` and `/workspace` where
+   they are.
+2. **Deploy.** The entrypoint adopts the SSH host keys from `/root/.config`,
+   so the box comes back as the same host. Expect a warning that
+   `/home/dev/.cache` is owned by root; the next step fixes it.
+3. **Log in as dev.** Root no longer logs in at all. Set `User dev` in your
+   `~/.ssh/config` ([ssh.md](ssh.md)).
+4. **Migrate:**
+   ```bash
+   sudo rcc-migrate --dry-run   # what it will copy
+   sudo rcc-migrate
+   ```
+   It copies the old volumes into `~`, moves `.claude.json` up to
+   `~/.claude.json`, re-keys Claude Code's per-project state from `/root/dev/…`
+   to `~/dev/…`, and hands the reused cache to dev. It refuses to run twice
+   unless you pass `--force`.
+5. **Check** that `claude` and `codex` are still signed in, `gh auth status`
+   passes, and `~/dev` holds your projects. Nothing in the image uses
+   `/workspace`; copy anything you kept there into `~/dev` now.
+6. **Remove the old mounts and redeploy:** `/root/.claude`, `/root/.config`,
+   `/root/.codex`, `/root/dev`, `/root/.local/share` and `/workspace`. Coolify
+   keeps the volumes themselves until you delete them, so keep them until the
+   new box has run for a while.
 
 ## Healthcheck
 
@@ -60,7 +95,7 @@ before `exec sshd` looking no different from a working one.
 
 ## Notes
 
-SSH host keys are persisted in the `/root/.config` volume. After a fresh setup, accept the key once. If you ever recreate the volumes, clear the old key locally:
+SSH host keys are persisted in the `*-system` volume. After a fresh setup, accept the key once. If you ever recreate that volume, clear the old key locally:
 ```
 ssh-keygen -R '[<server-ip>]:2222'
 ```
@@ -90,9 +125,10 @@ not applied.
 
 Connecting WebStorm over SSH is not a terminal session with a file browser: the
 backend is a full IDE running on the box, and the local client is close to a
-rendering surface. That is why four things here exist — the X/font libraries in
-the `Dockerfile`, the raised `nofile`, and the `/root/.cache` and
-`/root/.local/share` volumes.
+rendering surface. That is why three things here exist — the X/font libraries
+in the `Dockerfile`, the raised `nofile`, and the cache volume. JetBrains also
+keeps settings in `~/.config` and plugins in `~/.local/share`, which persist
+with the rest of home.
 
 Two limits live on the Hetzner host rather than in the container, so they can't
 be fixed from this repo:
