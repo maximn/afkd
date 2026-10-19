@@ -223,7 +223,7 @@ RUN case "${TARGETARCH}" in \
       | tar -xz -C /usr/local/bin --strip-components=1 "glow_${GLOW_VERSION}_Linux_${garch}/glow"
 
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
-ARG STARSHIP_VERSION=1.26.0
+ARG STARSHIP_VERSION=1.27.0
 RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
     && sh /tmp/starship-install.sh --yes --version "v${STARSHIP_VERSION}" \
     && rm /tmp/starship-install.sh
@@ -244,7 +244,7 @@ RUN case "${TARGETARCH}" in \
 
 # herdr is pre-1.0 and ships stable releases weekly.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
-ARG HERDR_VERSION=0.9.4
+ARG HERDR_VERSION=0.9.5
 RUN case "${TARGETARCH}" in \
       amd64) uarch=x86_64 ;; \
       arm64) uarch=aarch64 ;; \
@@ -258,7 +258,7 @@ RUN case "${TARGETARCH}" in \
 # base image: a repo's .nvmrc, .node-version, .python-version or .tool-versions
 # picks its own version. The binary is the static one from mise's own image,
 # pinned by digest like the base.
-COPY --from=ghcr.io/jdx/mise:2026.10.11@sha256:22608f88ac10c74f541553f3e4e4dab6a79cdb9669da916f6e0804959348080a /usr/local/bin/mise /usr/local/bin/mise
+COPY --from=ghcr.io/jdx/mise:2026.10.14@sha256:7cb6019fd7e60dfc3622b1d667d3e57628549fbc9e36b4a5768265388342f754 /usr/local/bin/mise /usr/local/bin/mise
 # Not named config.toml in the repo: mise reads ./mise/config.toml as project
 # config, so every contributor running mise here got it as theirs -- an
 # untrusted-config error on every command, and once trusted, the image's Node.
@@ -286,7 +286,7 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 # mise also writes download scratch under root's home, which nothing reads at
 # runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=24.22.0
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
     && mise install --system \
     && corepack enable --install-directory /usr/local/bin yarn pnpm \
@@ -311,7 +311,7 @@ COPY codex/config.toml /etc/codex/config.toml
 # against a grep: a filename that matches nothing would hand -c an empty list,
 # so an empty lookup is refused explicitly.
 # renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>\d+\.\d+\.\d+)$
-ARG CODEX_VERSION=0.162.1
+ARG CODEX_VERSION=0.163.0
 RUN case "${TARGETARCH}" in \
       amd64) triple=x86_64-unknown-linux-musl ;; \
       arm64) triple=aarch64-unknown-linux-musl ;; \
@@ -334,7 +334,7 @@ RUN case "${TARGETARCH}" in \
 # rather than silently under an unchanged pin. Renovate reads the version from
 # npm, where Anthropic publishes the same numbers.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.299
+ARG CLAUDE_CODE_VERSION=2.1.303
 RUN apt-get update \
     && apt-get install -y --no-install-recommends "claude-code=${CLAUDE_CODE_VERSION}-1" \
     && rm -rf /var/lib/apt/lists/*
