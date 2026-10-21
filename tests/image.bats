@@ -33,7 +33,7 @@ dockerfile_arg() {
     mise node npm npx corepack yarn pnpm \
     vi vim editor man gcc g++ pkg-config \
     dig ping nc lsof strace file tree eza rsync xz zip ssh \
-    t h; do
+    t h pbcopy; do
     run in_box sh -c "command -v $tool"
     [ "$status" -eq 0 ] || {
       echo "missing from image: $tool"
@@ -317,6 +317,35 @@ dockerfile_arg() {
   run in_box herdr --version
   [ "$status" -eq 0 ]
   [[ "$output" == *"$want"* ]]
+}
+
+# `script` gives pbcopy a terminal and records what reaches it. "aGk=" is
+# base64 for "hi".
+@test "pbcopy sends stdin to the terminal as OSC 52" {
+  run as_dev script -qc 'printf hi | pbcopy' /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e]52;c;aGk=\a'* ]]
+}
+
+# The agent case: its shell tool has no controlling terminal, but the pane
+# the agent runs in does. setsid drops the terminal from pbcopy alone.
+@test "pbcopy without a terminal of its own uses its parent's" {
+  run as_dev script -qc 'printf hi | setsid -w pbcopy' /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e]52;c;aGk=\a'* ]]
+}
+
+# docker exec without -t: no terminal anywhere up the tree.
+@test "pbcopy with no terminal at all fails and says why" {
+  run as_dev sh -c 'printf hi | pbcopy'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no terminal"* ]]
+}
+
+@test "tmux lets programs in a pane set the clipboard" {
+  run as_dev tmux -L ci new-session -d \; show -gv set-clipboard \; kill-server
+  [ "$status" -eq 0 ]
+  [ "$output" = "on" ]
 }
 
 # An interactive shell, the way a login gets one: /etc/zsh/zshrc and then
