@@ -15,6 +15,7 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 |---|---|
 | Agents | [Claude Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex) |
 | Multiplexers | `tmux`, `herdr` |
+| Clipboard | `pbcopy` copies to the clipboard of the machine you connect from, over OSC 52 (Ghostty, or iTerm2 with "Applications in terminal may access clipboard") |
 | Runtimes | [mise](https://mise.jdx.dev): Node by default, and whatever a project's `.nvmrc`, `.node-version`, `.python-version` or `.tool-versions` asks for. `yarn` and `pnpm` via corepack |
 | Shell | `zsh` + [starship](https://starship.rs), `fzf`, git aliases |
 | Git | `git`, `git-crypt`, `gh`, [git-spice](https://abhinav.github.io/git-spice/) |
