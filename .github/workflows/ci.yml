@@ -204,3 +204,110 @@ jobs:
         run: |
           echo "matrix result: $RESULT"
           [ "$RESULT" = success ]
+
+  # What a deployment pulls. Only a push to main publishes, and only once both
+  # architectures have passed: the box used to build its own image on every
+  # deploy -- minutes of downtime, gigabytes of build cache on its disk, and an
+  # image nobody had tested.
+  #
+  # Rebuilt here rather than pushed from the test job, so that job never holds
+  # a token that can write packages while it runs a PR's code. The build reads
+  # the cache the test job just wrote for this commit, so it replays the tested
+  # layers rather than re-deriving them.
+  publish:
+    name: Publish image (${{ matrix.arch }})
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One tag per architecture, joined into the multi-arch tags below. The
+      # source label is what ties the package to this repository on GHCR, so
+      # the repo's own token can keep writing to it.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          provenance: false
+
+  publish-tags:
+    name: Publish image tags
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The sha tag is what a rollback names; `main` is what a deployment
+      # pulls by default.
+      - name: Tag the commit and main
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$SHA" -t "$IMAGE:main" \
+            "$IMAGE:$SHA-amd64" "$IMAGE:$SHA-arm64"
+          docker buildx imagetools inspect "$IMAGE:main"
+
+  # Coolify only learns about a new image when asked. Left to deploy on its
+  # own push webhook it would deploy before this run had published anything,
+  # and pull the image it already had. Skipped where COOLIFY_URL is not set, so
+  # a fork without a Coolify still publishes.
+  #
+  # The token is the production environment's, not the repository's, and needs
+  # only Coolify's `deploy` permission.
+  deploy:
+    name: Deploy
+    needs: publish-tags
+    if: vars.COOLIFY_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    permissions: {}
+    steps:
+      - name: Ask Coolify to deploy
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error --get \
+            --header "Authorization: Bearer $COOLIFY_TOKEN" \
+            --data-urlencode "uuid=$COOLIFY_APP_UUID" \
+            "$COOLIFY_URL/api/v1/deploy"

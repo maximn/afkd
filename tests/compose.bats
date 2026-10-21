@@ -70,6 +70,21 @@ compose_config() {
   }
 }
 
+# Coolify builds every service that has a `build:` before it pulls the rest, so
+# one left here puts the image build back on the host: minutes of downtime,
+# gigabytes of build cache on its disk, and a box running an image CI never
+# tested. CI publishes the image; the deployment only pulls it.
+@test "pulls the published image rather than building on the host" {
+  run compose_config
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.services["remote-claude"].build' <<<"$output")" = null ]
+  [ "$(jq -r '.services["remote-claude"].image' <<<"$output")" = ghcr.io/maximn/remote-claude-code:main ]
+
+  run compose SSH_PUBLIC_KEYS="$PUBKEY" IMAGE_TAG=0123abc \
+    docker compose -f "$COMPOSE_FILE" config --format json
+  [ "$(jq -r '.services["remote-claude"].image' <<<"$output")" = ghcr.io/maximn/remote-claude-code:0123abc ]
+}
+
 @test "boots with its volumes, fd limit and port" {
   compose_up
   wait_ready
