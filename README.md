@@ -34,11 +34,20 @@ build the day it rolls.
 ## Deploy
 
 [docker-compose.yaml](docker-compose.yaml) is the whole deployment: the image,
-the published port, the three volumes and the fd limit. See
+the published port, the three volumes and the fd limit. The image is the one CI
+publishes to `ghcr.io/maximn/remote-claude-code` for every commit on `main`, so
+pull access to it comes first (`docker login ghcr.io`). See
 [coolify.md](coolify.md) for running it on Coolify.
 
 ```bash
 SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" docker compose up -d
+```
+
+To run your own build, tag it as the image Compose expects and it is used
+instead of pulled:
+
+```bash
+docker build -t ghcr.io/maximn/remote-claude-code:main .
 ```
 
 Or without Compose:
@@ -109,9 +118,9 @@ repo has shipped was only visible at runtime. `tests/entrypoint.bats` covers key
 installation, the `GITHUB_SSH_KEY` formats and forwarded-env quoting;
 `tests/ssh.bats` proves a real login works; `tests/migrate.bats` runs
 `rcc-migrate` against volumes laid out the way root-era images left them;
-`tests/compose.bats` boots `docker-compose.yaml` and checks it declares every
-variable the image reads; `tests/image.bats` checks the toolchain matches the
-pinned versions.
+`tests/compose.bats` boots `docker-compose.yaml`, checks it declares every
+variable the image reads and pulls the published image rather than building;
+`tests/image.bats` checks the toolchain matches the pinned versions.
 
 Linting: `shellcheck entrypoint.sh`, `zsh -n` for the `bin/` scripts (they're
 zsh, which shellcheck can't parse), and `hadolint` for the Dockerfile.

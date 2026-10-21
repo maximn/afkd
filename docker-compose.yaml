@@ -8,9 +8,15 @@
 # marks the rest optional without Compose warning about each unset one; they
 # reach the container as empty strings, which the entrypoint treats as unset.
 # .env.example says what each one is for.
+#
+# The image is the one CI built, tested and published for a commit on main;
+# nothing is built where this runs. IMAGE_TAG picks another: a commit sha
+# rolls back to that build. To run your own build instead, build it under the
+# same name (`docker build -t ghcr.io/maximn/remote-claude-code:main .`) and
+# Compose uses it rather than pulling.
 services:
   remote-claude:
-    build: .
+    image: ghcr.io/maximn/remote-claude-code:${IMAGE_TAG:-main}
     restart: unless-stopped
     ports:
       - "${SSH_PORT:-2222}:22"

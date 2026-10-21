@@ -11,6 +11,38 @@
 the fd limit, so there is nothing else to set by hand -- and nothing that
 recreating the app in the UI can quietly drop.
 
+## Image and deploys
+
+Coolify does not build the image. CI builds and tests it, and on every push to
+`main` publishes it to `ghcr.io/maximn/remote-claude-code` as `:<commit sha>`
+and `:main`, then asks Coolify to deploy, which pulls `:main`. Building on the
+host instead cost minutes of downtime per deploy and gigabytes of build cache
+on its disk, and ran an image CI had never tested.
+
+Once per deployment:
+
+1. **Let the host pull the package.** It is private while the repository is.
+   Create a classic token with only `read:packages`, then on the server:
+   ```bash
+   docker login ghcr.io -u <github user> --password-stdin
+   ```
+   Coolify runs Docker as the user it connects with, so log in as that user.
+2. **Turn off Automatic Deployment** in the app's Advanced settings. Coolify's
+   own push webhook fires before CI has published anything, so it would
+   redeploy the image it already has.
+3. **Let CI trigger the deploy.** Enable the API in Coolify's Settings, create
+   an API token with only the `deploy` permission, and in the GitHub repo:
+   ```bash
+   gh variable set COOLIFY_URL --body https://<your coolify>
+   gh variable set COOLIFY_APP_UUID --body <app uuid>
+   gh secret set COOLIFY_TOKEN --env production
+   ```
+   Without `COOLIFY_URL` the deploy job is skipped and images are still
+   published, so deploy from Coolify by hand.
+
+**Rolling back:** set `IMAGE_TAG` to the commit sha of a good build in
+Coolify's Environment Variables and redeploy. Clear it to follow `main` again.
+
 ## Environment Variables
 
 Coolify reads the variables from the compose file and lists them under
