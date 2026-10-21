@@ -1,7 +1,6 @@
 name: PR title
 
-# The repo squash-merges, so the title is the commit message release-please
-# will parse. `edited` is the type that matters and the reason this is its own
+# The repo squash-merges, so the title is the commit message on main. `edited` is the type that matters and the reason this is its own
 # workflow: a title fixed after the fact does not re-run anything triggered by
 # `synchronize`, and adding `edited` to CI's triggers would rebuild the image
 # on both architectures every time someone touched the description.
