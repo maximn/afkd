@@ -1,0 +1,37 @@
+#!/bin/zsh
+# pbcopy - copy stdin to the clipboard of the machine you ssh'd in from
+#   echo hi | pbcopy
+#
+# The box has no clipboard of its own. OSC 52 asks the terminal at the far
+# end of the connection to set *its* clipboard instead; herdr forwards the
+# request as-is, and tmux does once set-clipboard is on (see /etc/tmux.conf).
+# The local terminal has to allow it: Ghostty does by default, iTerm2 needs
+# "Applications in terminal may access clipboard", Terminal.app never does.
+
+# Written to the terminal rather than stdout, which is usually a pipe. An
+# agent's shell tool has no controlling terminal at all, so fall back to the
+# nearest ancestor that has one: the pane the agent itself is running in.
+find_tty() {
+  if ( : > /dev/tty ) 2>/dev/null; then
+    echo /dev/tty
+    return
+  fi
+  local pid=$$ tty
+  while (( pid > 1 )); do
+    tty="${$(ps -o tty= -p "$pid")// /}"
+    if [[ -n "$tty" && "$tty" != "?" && -w "/dev/$tty" ]]; then
+      echo "/dev/$tty"
+      return
+    fi
+    pid="${$(ps -o ppid= -p "$pid")// /}"
+    [[ -n "$pid" ]] || break
+  done
+  return 1
+}
+
+if ! tty="$(find_tty)"; then
+  echo "pbcopy: no terminal to send the clipboard to" >&2
+  exit 1
+fi
+
+printf '\033]52;c;%s\a' "$(base64 | tr -d '\n')" > "$tty"

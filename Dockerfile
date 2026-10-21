@@ -373,7 +373,9 @@ RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
 # the C compiler that make and node-gyp invoke by that name.
 COPY bin/t /usr/local/bin/t
 COPY bin/h /usr/local/bin/h
-RUN chmod +x /usr/local/bin/t /usr/local/bin/h
+COPY bin/pbcopy /usr/local/bin/pbcopy
+RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/pbcopy
+COPY tmux.conf /etc/tmux.conf
 
 # The image's interactive shell setup, kept out of home: sourced from the
 # system zshrc, ahead of the user's own ~/.zshrc. That file is seeded from
