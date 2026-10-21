@@ -1,39 +1,21 @@
 #!/usr/bin/env node
 // Lints a pull request title as a conventional commit.
 //
-// The repo squash-merges, so the PR title *is* the commit message on main --
-// and release-please reads those messages to decide the next version and to
-// write the changelog. A title it cannot parse is a change that silently never
-// ships: `@conventional-commits/parser` throws on anything before the type, so
-// the commit is dropped, and a release whose every commit was dropped is not
-// cut at all.
+// The repo squash-merges, so the PR title *is* the commit message on main, and
+// main's history is the record of what shipped: every merge is deployed. A
+// typed title says at a glance whether a commit changed the image (`build`),
+// the box's behaviour (`feat`, `fix`) or neither (`ci`, `docs`, `chore`).
 //
-// That is not hypothetical here. Every commit on main before this check was
-// gitmoji-first (`🔒 fix: ...`), which parses as typeless -- all twenty of
-// them. The convention is now type-first with the emoji in the subject
-// (`fix: 🔒 ...`), which keeps both conventions and parses.
-//
-// The accepted types are read from release-please-config.json rather than
-// listed here, so "a type this accepts" and "a type release-please knows what
-// to do with" cannot drift apart.
+// The type goes first and the gitmoji after the colon (`fix: 🔒 ...`). Every
+// commit on main before this check was gitmoji-first (`🔒 fix: ...`), which
+// conventional-commit parsers read as typeless.
 //
 // Run it by hand with `PR_TITLE='fix: 🔒 ...' node scripts/check-pr-title.mjs`;
 // CI runs it on every PR, including when only the title is edited.
 
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+export const TYPES = ['feat', 'fix', 'perf', 'build', 'revert', 'docs', 'style', 'refactor', 'test', 'ci', 'chore']
 
-const CONFIG = 'release-please-config.json'
-
-export function allowedTypes(config) {
-  const sections = Object.values(config.packages ?? {})
-    .flatMap((pkg) => pkg['changelog-sections'] ?? [])
-    .concat(config['changelog-sections'] ?? [])
-  return [...new Set(sections.map((s) => s.type))]
-}
-
-export function check(title, types) {
+export function check(title, types = TYPES) {
   const problems = []
   const list = types.join(', ')
 
@@ -51,8 +33,8 @@ export function check(title, types) {
     problems.push({
       what: 'the title does not start with a conventional-commit type',
       fix: 'the type comes first and the gitmoji goes after the colon: ' +
-        "'fix: 🔒 ...', not '🔒 fix: ...' -- the parser release-please uses " +
-        'throws on anything before the type, and the commit is dropped',
+        "'fix: 🔒 ...', not '🔒 fix: ...' -- a conventional-commit parser " +
+        'reads anything before the type as a commit with no type at all',
     })
     return problems
   }
@@ -70,7 +52,7 @@ export function check(title, types) {
   const { type, subject } = m.groups
   if (!types.includes(type)) {
     problems.push({
-      what: `'${type}' is not a type this repo releases on`,
+      what: `'${type}' is not a type this repo uses`,
       fix: `use one of: ${list}` +
         (type === 'feature' ? " -- 'feat', not 'feature'" : ''),
     })
@@ -79,7 +61,7 @@ export function check(title, types) {
     problems.push({ what: 'the subject is empty', fix: 'say what changed after the colon' })
   }
   if (/\.$/.test(subject)) {
-    problems.push({ what: 'the subject ends with a full stop', fix: 'drop it -- it lands in the changelog verbatim' })
+    problems.push({ what: 'the subject ends with a full stop', fix: 'drop it -- it lands in the history verbatim' })
   }
 
   return problems
@@ -87,13 +69,11 @@ export function check(title, types) {
 
 // --- CLI -------------------------------------------------------------------
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
-  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-  const types = allowedTypes(JSON.parse(readFileSync(join(root, CONFIG), 'utf8')))
   // Read from the environment, never from argv or an interpolated run: block.
   // A PR title is attacker-controlled text, and `${{ ... }}` splicing it into
   // a shell command is the template-injection hole #25 and #29 both closed.
   const title = process.env.PR_TITLE
-  const problems = check(title, types)
+  const problems = check(title)
   if (problems.length === 0) {
     console.log(`✓ ${JSON.stringify(title)} parses as a conventional commit`)
     process.exit(0)
@@ -103,7 +83,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
     console.error(`  ${p.what}`)
     console.error(`  → ${p.fix}\n`)
   }
-  console.error('The title becomes the commit on main, and release-please reads it.')
+  console.error('The title becomes the commit on main.')
   console.error('See "Commits" in CONTRIBUTING.md.')
   process.exit(1)
 }

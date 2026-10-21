@@ -32,7 +32,7 @@
   ],
   "packageRules": [
     {
-      "description": "One grouped PR a week for the image toolchain rather than a PR per release - claude-code alone ships most days. Typed build, not chore: these bumps change what is inside the published image, so they belong in the changelog and should cut a release. config:recommended's :semanticPrefixFixDepsChoreOthers types everything here chore, which release-please hides.",
+      "description": "One grouped PR a week for the image toolchain rather than a PR per release - claude-code alone ships most days. Typed build, not chore: these bumps change what is inside the published image, and the commit type is what says so in main's history. config:recommended's :semanticPrefixFixDepsChoreOthers would type everything here chore.",
       "matchManagers": [
         "custom.regex",
         "dockerfile"

@@ -10,11 +10,9 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { allowedTypes, check } from './check-pr-title.mjs'
+import { TYPES, check } from './check-pr-title.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CONFIG = JSON.parse(readFileSync(join(root, 'release-please-config.json'), 'utf8'))
-const TYPES = allowedTypes(CONFIG)
 
 let failed = 0
 
@@ -39,20 +37,11 @@ const rejects = (title, expect) => {
 
 console.log('check-pr-title:')
 
-// The config has to carry types at all, or every case below passes vacuously.
-if (TYPES.length === 0) {
-  failed++
-  console.error('  ✗ release-please-config.json declares no changelog-sections')
-} else {
-  console.log(`  ✓ ${TYPES.length} types read from release-please-config.json: ${TYPES.join(', ')}`)
-}
-
 // The titles the repo and its bots really produce.
 accepts('feat: ✨ support JetBrains remote development')
 accepts('fix: 🔒 quote the values spliced into the ntfy hook')
 accepts('build(deps): ⬆️ update image toolchain')
 accepts('chore(deps): update github actions')
-accepts('chore(main): release 0.1.0')
 accepts('feat!: drop SYS_ADMIN and /dev/fuse')
 accepts('refactor(entrypoint)!: write settings.json under a umask')
 
@@ -64,7 +53,7 @@ rejects('⬆️ chore: bump herdr to 0.9.1',
   'does not start with a conventional-commit type')
 
 // Renovate's titles before `semanticCommits: enabled`, and GitHub's default
-// revert title -- all typeless, all silently dropped by the parser.
+// revert title -- all typeless.
 rejects('Update image toolchain', 'does not start with a conventional-commit type')
 rejects('Pin dependencies', 'does not start with a conventional-commit type')
 rejects('Revert "feat: ✨ support JetBrains remote development"',
@@ -73,8 +62,8 @@ rejects('Revert "feat: ✨ support JetBrains remote development"',
 rejects('', 'the title is empty')
 rejects('fix quote the hook values', 'not a conventional commit')
 rejects('fix:no space after the colon', 'not a conventional commit')
-rejects('feature: ✨ add the ch helper', 'is not a type this repo releases on')
-rejects('wip: still thinking', 'is not a type this repo releases on')
+rejects('feature: ✨ add the ch helper', 'is not a type this repo uses')
+rejects('wip: still thinking', 'is not a type this repo uses')
 rejects('fix:', 'not a conventional commit')
 rejects('fix: ', 'the subject is empty')
 rejects('fix: 🔒 quote the hook values.', 'ends with a full stop')
