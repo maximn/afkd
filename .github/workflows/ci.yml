@@ -306,8 +306,10 @@ jobs:
           COOLIFY_URL: ${{ vars.COOLIFY_URL }}
           COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        # POST: Coolify answers a GET here with a 400 that only says the
+        # endpoint has moved to POST, and deploys nothing.
         run: |
-          curl --fail-with-body --silent --show-error --get \
+          curl --fail-with-body --silent --show-error \
             --header "Authorization: Bearer $COOLIFY_TOKEN" \
             --data-urlencode "uuid=$COOLIFY_APP_UUID" \
             "$COOLIFY_URL/api/v1/deploy"
