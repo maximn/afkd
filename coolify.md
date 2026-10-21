@@ -116,27 +116,34 @@ ssh-keygen -R '[<server-ip>]:2222'
 Deployments before the compose file used the `Dockerfile` build pack, with the
 port mapping, the volumes and `--ulimit nofile=65536:65536` set by hand in the
 UI. Switching keeps the data, but the compose file's volumes are new ones, so
-it is copied across once:
+it is copied across once. The copy goes first, so the first Compose boot
+already finds the home and the host keys rather than generating fresh ones:
 
-1. **Switch the build pack.** In the app's General settings set Build Pack to
-   `Docker Compose` and Docker Compose Location to `/docker-compose.yaml`.
-   Clear Port Mappings and Custom Docker Options; the compose file has both.
-   Fill in `SSH_PUBLIC_KEYS` and the rest, which Coolify now lists.
-2. **Deploy once, then stop the app.** That creates the new, empty volumes.
-3. **Copy each old volume into its new one** on the host. `docker volume ls`
-   shows both sets: the old `<uuid>-home`, `<uuid>-cache`, `<uuid>-system` and
-   the new `<uuid>_home`, `<uuid>_cache`, `<uuid>_system`.
+1. **Stop the app**, so nothing writes to the old volumes while they are
+   copied.
+2. **Copy each old volume into its new one** on the host. Compose names them
+   `<uuid>_<name>`, the old ones are `<uuid>-<name>`; if a new one already
+   exists, stop and look at it before copying over it.
    ```bash
    for v in home cache system; do
+     docker volume create "<uuid>_$v"
      docker run --rm -v "<uuid>-$v:/from:ro" -v "<uuid>_$v:/to" debian:trixie \
        cp -a /from/. /to/
    done
    ```
    Copying `system` keeps the SSH host keys, so clients see the same host.
-4. **Start the app** and check the container log for `nofile limit: 65536`,
-   then log in and check `~/dev` and the agents' logins.
+   Run it where a dropped ssh session cannot end it halfway (`tmux`, or
+   `docker run -d` and read the result from `docker logs`); a copy that was
+   cut short is deleted and redone, not resumed.
+3. **Switch the build pack.** In the app's General settings set Build Pack to
+   `Docker Compose` and Docker Compose Location to `/docker-compose.yaml`.
+   Clear Port Mappings and Custom Docker Options; the compose file has both.
+   Fill in `SSH_PUBLIC_KEYS` and the rest, which Coolify now lists.
+4. **Deploy** and check the container log for `nofile limit: 65536`, then log
+   in and check the host key is unchanged, `~/dev`, and the agents' logins.
 5. **Remove the old volumes** from Persistent Storage once the new box has run
-   for a while.
+   for a while. Until then, switching the build pack back and restoring the
+   port mapping returns to them untouched.
 
 The entrypoint prints `nofile limit: <n>` at boot and warns below 4096, which
 is what a deployment that runs the image without the compose file looks like:
