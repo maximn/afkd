@@ -30,7 +30,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     env:
-      IMAGE: remote-claude-code:weekly-${{ matrix.arch }}
+      IMAGE: afkd:weekly-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

@@ -1,0 +1,103 @@
+#!/bin/zsh
+# afk - long-lived tmux and herdr sessions on the box, from anywhere.
+#
+# One script for both ends. On the laptop it ssh-es to the box and runs itself
+# there with the same arguments; on the box it drives tmux or herdr directly.
+# The box is told apart by /run/afkd, which its entrypoint creates on every
+# boot and which nothing else has.
+
+usage() {
+  cat <<EOF
+afk - long-lived tmux and herdr sessions on the box
+
+Usage:
+  afk                    Attach to tmux session 'main' (or create it)
+  afk <name>             Attach to tmux session <name> (or create it)
+  afk ls                 List tmux sessions
+  afk kill <name>        Kill tmux session <name>
+  afk herdr              Attach to the default herdr session
+  afk herdr <name>       Attach to herdr session <name> (or create it)
+  afk herdr ls           List herdr sessions
+  afk herdr kill <name>  Stop herdr session <name>
+  afk ssh                A plain shell on the box, no multiplexer
+  afk help               Show this help
+
+From a laptop, each command runs on the ssh host \$AFK_HOST (default: afk).
+EOF
+}
+
+case "$1" in
+  -h|--help|help) usage; exit 0 ;;
+  -*) usage >&2; exit 2 ;;
+esac
+
+# --- On the laptop ----------------------------------------------------------
+if [[ ! -d /run/afkd ]]; then
+  host="${AFK_HOST:-afk}"
+  # ssh joins its arguments into one string for the remote shell, so each one
+  # is quoted here or a session name with a space would arrive as two.
+  remote="afk ${(j: :)${(q-)@}}"
+  case "$1 $2" in
+    "ssh "*) exec ssh "$host" ;;
+    "ls "* | "kill "* | "herdr ls" | "herdr kill") exec ssh "$host" "$remote" ;;
+  esac
+  # Attaching needs a terminal. COLORTERM is never forwarded by ssh, so it is
+  # set for truecolor apps.
+  exec ssh -t "$host" "COLORTERM=truecolor $remote"
+fi
+
+# --- On the box -------------------------------------------------------------
+
+# Keep the forwarded TERM when the box has that terminfo entry (the image ships
+# xterm-ghostty), fall back only for clients it doesn't know.
+infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color
+
+need_name() {
+  if [[ -z "$2" ]]; then
+    echo "Usage: afk $1 <session>" >&2
+    exit 1
+  fi
+}
+
+case "$1" in
+  ssh)
+    echo "afk: already on the box" >&2
+    exit 1
+    ;;
+  ls)
+    tmux list-sessions 2>/dev/null || echo "No active sessions"
+    ;;
+  kill)
+    need_name kill "$2"
+    exec tmux kill-session -t "$2"
+    ;;
+  herdr)
+    case "$2" in
+      ls)
+        exec herdr session list
+        ;;
+      kill)
+        need_name "herdr kill" "$3"
+        exec herdr session stop "$3"
+        ;;
+    esac
+    # herdr refuses nested launches, and running it under tmux leaves two
+    # multiplexers fighting over the same PTY. Fail with an explanation
+    # rather than herdr's own error.
+    if [[ -n "$HERDR_ENV" ]]; then
+      echo "Already inside a herdr pane. Use the sidebar or 'herdr workspace create'." >&2
+      exit 1
+    fi
+    if [[ -n "$TMUX" ]]; then
+      echo "Inside tmux. Detach first (ctrl+b d), then run 'afk herdr' from a clean shell." >&2
+      exit 1
+    fi
+    if [[ -z "$2" ]]; then
+      exec herdr
+    fi
+    exec herdr --session "$2"
+    ;;
+  *)
+    exec tmux new-session -A -s "${1:-main}"
+    ;;
+esac

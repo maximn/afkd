@@ -19,18 +19,18 @@ set -euo pipefail
 #
 # The files are dev's, since dev's shell and git read them; the directory is
 # root's, so nothing but this script decides what is in it.
-RUNTIME_DIR=/run/remote-claude
+RUNTIME_DIR=/run/afkd
 install -d -m 750 -o root -g dev "$RUNTIME_DIR"
 
 # SSH host keys, on the system-state volume (HostKey in the drop-in) so the
 # box keeps its identity across redeploys. Created on first boot, one per
 # type, and never replaced.
-HOST_KEYS=/var/lib/remote-claude/ssh
-install -d -m 755 /var/lib/remote-claude
+HOST_KEYS=/var/lib/afkd/ssh
+install -d -m 755 /var/lib/afkd
 install -d -m 700 "$HOST_KEYS"
 
 # Images before the dev user kept the keys in /root/.config. That volume is
-# still mounted on the deploy that runs rcc-migrate, and adopting its keys
+# still mounted on the deploy that runs afkd-migrate, and adopting its keys
 # here, before sshd starts, is what lets the box come up as the same host.
 if ! compgen -G "$HOST_KEYS/ssh_host_*_key" >/dev/null \
    && compgen -G "/root/.config/ssh_host_*_key" >/dev/null; then
@@ -64,7 +64,7 @@ claim_for_dev() {
     return 0
   fi
   echo "warning: $dir is owned by $owner, not dev, and is not empty; leaving it as it is." \
-       "If it holds the root-era volumes, run 'sudo rcc-migrate'; otherwise 'sudo chown -R dev:dev $dir'." >&2
+       "If it holds the root-era volumes, run 'sudo afkd-migrate'; otherwise 'sudo chown -R dev:dev $dir'." >&2
   return 1
 }
 
@@ -86,7 +86,7 @@ chmod 644 /etc/ssh/authorized_keys/dev
 # costs a default settings file, not the way in, so it warns and carries on.
 if claim_for_dev /home/dev 700; then
   claim_for_dev /home/dev/.cache 755 || true
-  runuser -u dev -- /usr/local/libexec/remote-claude/home-init \
+  runuser -u dev -- /usr/local/libexec/afkd/home-init \
     || echo "warning: could not set up /home/dev; see the lines above" >&2
 fi
 
@@ -175,7 +175,7 @@ fi
 # container as an empty string, and an empty GH_TOKEN or API key in every
 # session reads as a blank credential rather than none.
 #
-# Sourced by /etc/zsh/remote-claude.zshenv, which every zsh reads. Written
+# Sourced by /etc/zsh/afkd.zshenv, which every zsh reads. Written
 # under a umask like the GitHub key above: this file holds GH_TOKEN and every
 # agent API key, and a plain redirect creates it 0644 and leaves it that way
 # until the chmod. The chmod stays for the case where the file already exists,

@@ -12,11 +12,11 @@
 # The image is the one CI built, tested and published for a commit on main;
 # nothing is built where this runs. IMAGE_TAG picks another: a commit sha
 # rolls back to that build. To run your own build instead, build it under the
-# same name (`docker build -t ghcr.io/maximn/remote-claude-code:main .`) and
+# same name (`docker build -t ghcr.io/maximn/afkd:main .`) and
 # Compose uses it rather than pulling.
 services:
-  remote-claude:
-    image: ghcr.io/maximn/remote-claude-code:${IMAGE_TAG:-main}
+  afkd:
+    image: ghcr.io/maximn/afkd:${IMAGE_TAG:-main}
     restart: unless-stopped
     ports:
       - "${SSH_PORT:-2222}:22"
@@ -39,7 +39,7 @@ services:
     volumes:
       - home:/home/dev
       - cache:/home/dev/.cache
-      - system:/var/lib/remote-claude
+      - system:/var/lib/afkd
 
 volumes:
   home:

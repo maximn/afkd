@@ -7,14 +7,14 @@
 # The git plugin registers completions with compdef, so compinit runs first.
 autoload -Uz compinit && compinit
 
-source /usr/local/share/remote-claude/zsh/omz/lib-git.zsh
-source /usr/local/share/remote-claude/zsh/omz/git.plugin.zsh
+source /usr/local/share/afkd/zsh/omz/lib-git.zsh
+source /usr/local/share/afkd/zsh/omz/git.plugin.zsh
 
 # After the plugin, so the personal overrides win.
-source /usr/local/share/remote-claude/zsh/git-aliases.zsh
+source /usr/local/share/afkd/zsh/git-aliases.zsh
 
 # Interactive shells resolve tool versions on every prompt rather than through
-# the shims remote-claude.zshenv puts on PATH, which also applies a trusted
+# the shims afkd.zshenv puts on PATH, which also applies a trusted
 # project's [env].
 eval "$(mise activate zsh)"
 eval "$(starship init zsh)"

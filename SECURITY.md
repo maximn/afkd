@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report privately through GitHub's
-[security advisories](https://github.com/maximn/remote-claude-code/security/advisories/new).
+[security advisories](https://github.com/maximn/afkd/security/advisories/new).
 Please don't open a public issue for anything exploitable.
 
 ## What this image is
@@ -15,7 +15,7 @@ credentials belong to.
 
 Design decisions that follow from that:
 
-- **Key-based SSH only.** `sshd_config.d/99-remote-claude.conf` turns off
+- **Key-based SSH only.** `sshd_config.d/99-afkd.conf` turns off
   password and keyboard-interactive authentication and refuses root logins
   outright, and the build fails unless `sshd -T` confirms every one of those
   took effect. The entrypoint refuses to boot with an empty
@@ -23,7 +23,7 @@ Design decisions that follow from that:
 - **Secrets are injected as environment variables**, never baked into the image
   or committed, and never written into home. The entrypoint rebuilds them on
   every boot outside the persisted volumes -- forwarded tokens and the GitHub
-  key under `/run/remote-claude`, the ntfy hooks in Claude Code's managed
+  key under `/run/afkd`, the ntfy hooks in Claude Code's managed
   settings -- so unsetting one on the deployment removes it from the box. Each
   is written `0600` under a `umask` so it is never briefly world-readable, and
   values interpolated into the notification hooks are shell-quoted rather than
@@ -36,7 +36,7 @@ Design decisions that follow from that:
   it buys is an agent that runs unattended without Claude Code's root guard
   in the way, and projects whose files are not root's. The SSH host keys live
   on their own volume, readable by root alone; secrets under
-  `/run/remote-claude` are dev's, in a directory only root can write to.
+  `/run/afkd` are dev's, in a directory only root can write to.
 - **The container has no added capabilities.** It used to be
   given `SYS_ADMIN`, `/dev/fuse` and `apparmor:unconfined`; those were for the
   Browserless/Playwright wiring the image no longer installs, and a capability
