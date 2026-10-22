@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# rcc-migrate: the one-shot move from the root-era layout -- a volume per
+# afkd-migrate: the one-shot move from the root-era layout -- a volume per
 # directory under /root -- into dev's home. It runs once per deployment, on
 # data nobody can regenerate, so the legacy volumes are seeded the way the old
 # image left them and the result is checked file by file.
@@ -79,7 +79,7 @@ start_legacy_box() {
   seed_legacy
   start_legacy_box
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -eq 0 ]
 
   # The user's own settings win over the default the entrypoint seeded.
@@ -125,7 +125,7 @@ start_legacy_box() {
   seed_legacy
   start_legacy_box
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -eq 0 ]
 
   run as_dev jq -r '.hooks.SessionStart[0].hooks[0].command' .claude/settings.json
@@ -154,7 +154,7 @@ start_legacy_box() {
   seed_legacy
   start_legacy_box
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -eq 0 ]
   [[ "$output" == *"/home/dev/.config/other/app.conf"* ]]
   [[ "$output" != *"session.jsonl"* ]]
@@ -180,7 +180,7 @@ SEED
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -v "${claude}:/root/.claude" -v "${dev}:/root/dev"
   wait_ready
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -eq 0 ]
 
   run as_dev jq -c '.projects | keys' .claude.json
@@ -195,7 +195,7 @@ SEED
   seed_legacy
   start_legacy_box
 
-  run as_dev sudo -n rcc-migrate --dry-run
+  run as_dev sudo -n afkd-migrate --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"/root/.claude"* ]]
 
@@ -205,7 +205,7 @@ SEED
   [ "$output" = "root" ]
 
   # Nor does it count as the run: the real one still goes ahead.
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -eq 0 ]
 }
 
@@ -214,13 +214,13 @@ SEED
 @test "refuses to run a second time without --force" {
   seed_legacy
   start_legacy_box
-  as_dev sudo -n rcc-migrate >/dev/null
+  as_dev sudo -n afkd-migrate >/dev/null
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -ne 0 ]
   [[ "$output" == *"already migrated"* ]]
 
-  run as_dev sudo -n rcc-migrate --force
+  run as_dev sudo -n afkd-migrate --force
   [ "$status" -eq 0 ]
 }
 
@@ -228,9 +228,9 @@ SEED
   seed_legacy
   start_legacy_box
 
-  run as_dev rcc-migrate
+  run as_dev afkd-migrate
   [ "$status" -ne 0 ]
-  [[ "$output" == *"sudo rcc-migrate"* ]]
+  [[ "$output" == *"sudo afkd-migrate"* ]]
 }
 
 # The likeliest mistake is running it after the old volumes were already
@@ -239,7 +239,7 @@ SEED
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
 
-  run as_dev sudo -n rcc-migrate
+  run as_dev sudo -n afkd-migrate
   [ "$status" -ne 0 ]
   [[ "$output" == *"nothing to migrate"* ]]
 }

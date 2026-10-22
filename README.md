@@ -1,10 +1,11 @@
-# remote-claude-code
+# afkd
 
-[![CI](https://github.com/maximn/remote-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/maximn/remote-claude-code/actions/workflows/ci.yml)
+[![CI](https://github.com/maximn/afkd/actions/workflows/ci.yml/badge.svg)](https://github.com/maximn/afkd/actions/workflows/ci.yml)
 
 A container image for a persistent remote coding box: SSH in from a laptop or a
 phone, attach to a long-lived `tmux` or [herdr](https://github.com/herdrdev/herdr)
-session, and leave Claude Code or Codex running while you disconnect.
+session, and leave Claude Code or Codex running while you disconnect. You go
+AFK; the box keeps working.
 
 The box is the unit of persistence. Sessions, agent state, auth and your working
 tree all survive a dropped connection, a closed laptop, and a redeploy.
@@ -36,7 +37,7 @@ build the day it rolls.
 
 [docker-compose.yaml](docker-compose.yaml) is the whole deployment: the image,
 the published port, the three volumes and the fd limit. The image is the one CI
-publishes to `ghcr.io/maximn/remote-claude-code` for every commit on `main`, so
+publishes to `ghcr.io/maximn/afkd` for every commit on `main`, so
 pull access to it comes first (`docker login ghcr.io`). See
 [coolify.md](coolify.md) for running it on Coolify.
 
@@ -48,19 +49,19 @@ To run your own build, tag it as the image Compose expects and it is used
 instead of pulled:
 
 ```bash
-docker build -t ghcr.io/maximn/remote-claude-code:main .
+docker build -t ghcr.io/maximn/afkd:main .
 ```
 
 Or without Compose:
 
 ```bash
-docker build -t remote-claude-code .
+docker build -t afkd .
 docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
   -e SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
-  -v rcc-home:/home/dev \
-  -v rcc-cache:/home/dev/.cache \
-  -v rcc-system:/var/lib/remote-claude \
-  remote-claude-code
+  -v afkd-home:/home/dev \
+  -v afkd-cache:/home/dev/.cache \
+  -v afkd-system:/var/lib/afkd \
+  afkd
 ```
 
 You log in as `dev`, which owns all of `/home/dev` and has passwordless `sudo`.
@@ -77,29 +78,31 @@ gets it with no configuration.
 
 ## Connect
 
-Add the host to `~/.ssh/config` (see [ssh.md](ssh.md)), then symlink the local
-helpers from `bin/`:
+Add the box to `~/.ssh/config` as `Host afk` (see [ssh.md](ssh.md)), then
+symlink `afk` onto your PATH:
 
 ```bash
-ln -sf "$PWD/bin/cc" ~/.local/bin/cc   # tmux sessions over ssh
-ln -sf "$PWD/bin/ch" ~/.local/bin/ch   # herdr sessions over ssh
+ln -sf "$PWD/bin/afk" ~/.local/bin/afk
 ```
 
 ```bash
-cc              # attach to the 'main' tmux session, creating it if needed
-cc myproject    # named session
-cc ls           # list sessions
-ch              # the herdr equivalent
+afk                 # attach to the 'main' tmux session, creating it if needed
+afk myproject       # named session
+afk ls              # list sessions
+afk kill myproject  # end one
+afk herdr           # the same, in herdr: afk herdr <name>, herdr ls, herdr kill
+afk ssh             # a plain shell, no multiplexer
 ```
 
-`bin/t` and `bin/h` are the server-side counterparts, for when you're already
-on the box — over plain SSH from a phone, for instance.
+The image ships the same `afk`, which on the box drives tmux and herdr
+directly: the same commands work over plain SSH from a phone. A host alias
+other than `afk` goes in `AFK_HOST`.
 
 On a new box, sign the agents in once — their credentials live in the mounted
 volumes, so this survives redeploys:
 
 ```bash
-cc
+afk
 claude login
 ```
 
@@ -109,7 +112,7 @@ CI builds the image and runs the test suite against a running container. To do
 the same locally:
 
 ```bash
-docker build -t remote-claude-code:ci .
+docker build -t afkd:ci .
 npm install -g bats
 bats --print-output-on-failure tests/
 ```
@@ -118,7 +121,7 @@ The suite boots the real image for every case, because each entrypoint bug this
 repo has shipped was only visible at runtime. `tests/entrypoint.bats` covers key
 installation, the `GITHUB_SSH_KEY` formats and forwarded-env quoting;
 `tests/ssh.bats` proves a real login works; `tests/migrate.bats` runs
-`rcc-migrate` against volumes laid out the way root-era images left them;
+`afkd-migrate` against volumes laid out the way root-era images left them;
 `tests/compose.bats` boots `docker-compose.yaml`, checks it declares every
 variable the image reads and pulls the published image rather than building;
 `tests/image.bats` checks the toolchain matches the pinned versions.

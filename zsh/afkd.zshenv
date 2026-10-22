@@ -32,4 +32,4 @@ export EDITOR=vim VISUAL=vim
 # API keys and tokens forwarded from the container's environment, rebuilt by
 # the entrypoint on every boot. sshd starts each session with a clean
 # environment, so this is how they reach an ssh command or an agent at all.
-[[ -r /run/remote-claude/env.zsh ]] && source /run/remote-claude/env.zsh
+[[ -r /run/afkd/env.zsh ]] && source /run/afkd/env.zsh
