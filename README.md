@@ -131,8 +131,9 @@ zsh, which shellcheck can't parse), and `hadolint` for the Dockerfile.
 
 ### Platform
 
-`linux/amd64` and `linux/arm64`. CI builds and runs the full suite on both, on
-a native runner each rather than one emulating the other.
+`linux/amd64` and `linux/arm64`. CI builds and runs the full suite on both before
+publishing, on a native runner each rather than one emulating the other. PRs
+run amd64 alone, to keep the private repo inside its Actions allowance.
 
 Architecture comes from BuildKit's `TARGETARCH` and nothing else. It used to be
 discovered at runtime in two spellings — `dpkg --print-architecture` for the
