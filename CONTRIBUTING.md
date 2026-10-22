@@ -50,8 +50,10 @@ for f in bin/* zsh/* git-aliases.zsh; do zsh -n "$f"; done
 Both are globs, and CI runs the same two lines — add a script and it is
 covered without anyone remembering to extend a list.
 
-CI runs all of the above plus hadolint, actionlint, gitleaks and a Trivy scan
-of the built image.
+CI runs all of the above plus hadolint, actionlint and gitleaks. A PR builds
+and tests the image on amd64 only, and skips the build entirely when it touches
+nothing the image reads (docs, `scripts/`, Renovate config). `main` builds both
+architectures and Trivy-scans them before it publishes.
 
 ## What CI cannot check
 
