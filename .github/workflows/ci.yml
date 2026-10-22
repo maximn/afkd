@@ -162,7 +162,7 @@ jobs:
           while IFS= read -r f; do
             case "$f" in
               *.md | LICENSE | renovate.json | scripts/* | .gitignore | .hadolint.yaml | \
-                .github/CODEOWNERS | .github/pull_request_template.md | .github/zizmor.yml | \
+                .github/CODEOWNERS | .github/zizmor.yml | \
                 .github/workflows/pr-title.yml | .github/workflows/weekly.yml)
                 echo "skip:  $f" ;;
               *)
