@@ -114,16 +114,80 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Whether this PR touches anything the image build or its suite reads. A
+  # docs-only PR used to spend eight runner-minutes rebuilding an image it
+  # could not have changed, and while this repo is private those minutes come
+  # out of a monthly allowance.
+  #
+  # Not `paths-ignore` on the trigger: that skips the whole workflow, and the
+  # `Build & test image` check below would then never report at all. Here the
+  # build is skipped and the check still reports, as a pass.
+  #
+  # The list names what is safe to skip rather than what to build, so a file
+  # added to the image later builds by default instead of slipping past.
+  # ci.yml and the composite action stay off it on purpose: they are how the
+  # image gets built.
+  changes:
+    name: Detect image changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      image: ${{ steps.diff.outputs.image }}
+    steps:
+      # Through the API rather than a checkout and a git diff: the PR's file
+      # list is all this needs, and a clone deep enough to reach the merge base
+      # costs more than the answer is worth.
+      - name: Diff against the base branch
+        id: diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # A push to main publishes what it builds, so it always builds.
+          if [ "$EVENT" != pull_request ]; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Fetched before the loop rather than fed to it by process
+          # substitution, whose exit status nothing checks: a failed API call
+          # would read as an empty file list and skip the build.
+          files="$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')"
+          image=false
+          while IFS= read -r f; do
+            case "$f" in
+              *.md | LICENSE | renovate.json | scripts/* | .gitignore | .hadolint.yaml | \
+                .github/CODEOWNERS | .github/pull_request_template.md | .github/zizmor.yml | \
+                .github/workflows/pr-title.yml | .github/workflows/weekly.yml)
+                echo "skip:  $f" ;;
+              *)
+                echo "build: $f"
+                image=true ;;
+            esac
+          done <<< "$files"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
   # One job per architecture, each building natively on a runner of that
   # architecture rather than one job emulating the other through QEMU -- an
   # emulated arm64 build of this image runs long enough to be the slowest
   # thing in CI, and the suite it feeds boots a real container for every case.
   #
-  # arm64 runners are 2 vCPU and billed against the Actions allowance while
-  # this repo is private; they become free 4-vCPU runners when it goes public.
+  # A PR builds amd64 alone; arm64 waits for main. arm64 runners are 2 vCPU and
+  # billed against the Actions allowance while this repo is private, and an
+  # arm64-only break is rare enough to fix forward: main's arm64 leg still
+  # gates the publish, so a broken arm64 build never deploys -- it holds the
+  # deploy back until it is fixed. Once the repo is public they become free
+  # 4-vCPU runners, and PRs can have both back.
   build-and-test-matrix:
     name: Build & test image (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 30
     strategy:
       # The point of two architectures is finding out which one broke. With
@@ -131,11 +195,7 @@ jobs:
       # about whether it would have passed.
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
+        arch: ${{ fromJSON(github.event_name == 'pull_request' && '["amd64"]' || '["amd64","arm64"]') }}
     env:
       IMAGE: afkd:ci-${{ matrix.arch }}
     steps:
@@ -172,14 +232,19 @@ jobs:
           # `cond && '' || 'x'`, that can never yield the empty string.
           cache-to: ${{ github.event_name == 'push' && format('type=gha,mode=max,scope={0},ignore-error=true', matrix.arch) || '' }}
 
+      # Main only. A scan is most of a runner-minute per leg, and what it
+      # answers -- is there a fixable CRITICAL in what we would ship -- is
+      # asked where shipping happens: this leg gates the publish, so a
+      # CRITICAL still never deploys. The weekly rebuild scans as well.
       - name: Scan image
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
           # CRITICAL blocks; HIGH is reported by the weekly rebuild instead.
           # Every HIGH in this image today is upstream and unfixable here, and
-          # a permanently-red gate is one nobody reads -- Renovate's automerge
-          # is gated on this job.
+          # a permanently-red gate is one nobody reads -- it holds back every
+          # deploy behind it.
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: '1'
@@ -191,18 +256,29 @@ jobs:
   #
   # `always()` because a skipped or cancelled matrix leg leaves `needs` in a
   # state the default `success()` would quietly let through as not-a-failure.
+  #
+  # Skipped is a pass in exactly one case: the change detection ran and found
+  # nothing the image reads. A skip for any other reason -- the detection
+  # itself failing among them -- is a failure.
   build-and-test:
     name: Build & test image
-    needs: build-and-test-matrix
+    needs: [changes, build-and-test-matrix]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: every architecture built and passed
         env:
+          CHANGES: ${{ needs.changes.result }}
+          IMAGE_CHANGED: ${{ needs.changes.outputs.image }}
           RESULT: ${{ needs.build-and-test-matrix.result }}
         run: |
-          echo "matrix result: $RESULT"
+          echo "change detection: $CHANGES | image changed: $IMAGE_CHANGED | matrix result: $RESULT"
+          [ "$CHANGES" = success ]
+          if [ "$IMAGE_CHANGED" = false ]; then
+            echo "nothing the image reads changed -- build skipped"
+            exit 0
+          fi
           [ "$RESULT" = success ]
 
   # What a deployment pulls. Only a push to main publishes, and only once both

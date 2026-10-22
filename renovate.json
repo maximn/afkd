@@ -5,6 +5,7 @@
     "helpers:pinGitHubActionDigests"
   ],
   "semanticCommits": "enabled",
+  "rebaseWhen": "conflicted",
   "customManagers": [
     {
       "customType": "regex",
