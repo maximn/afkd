@@ -13,14 +13,14 @@ follow from that, and they shape most of the review feedback here:
 2. **Secrets arrive as environment variables and are never committed.** Values
    can contain spaces, quotes, `$` and newlines, so anything that writes them
    to a file quotes them properly. The forwarded-env file uses `printf %q`
-   for this reason. They are written under `/run/remote-claude` or `/etc`,
+   for this reason. They are written under `/run/afkd` or `/etc`,
    never into home: home is persisted, and a secret that lands there outlives
    its removal from the deployment.
 
 ## Working on it
 
 ```bash
-docker build -t remote-claude-code:ci .
+docker build -t afkd:ci .
 npm install -g bats
 bats --print-output-on-failure tests/
 ```
@@ -38,7 +38,7 @@ actually fail: `docker exec` inherits the container's environment, so reading a
 variable back without clearing it first asserts nothing.
 
 The suite cleans up the volumes it creates. If a run is interrupted, they are
-all labelled: `docker volume prune --filter label=rcc-ci=1`.
+all labelled: `docker volume prune --filter label=afkd-ci=1`.
 
 Before opening a PR:
 
@@ -107,6 +107,6 @@ Mark a breaking change -- one that needs the deployment changed when it lands
 ## Deploys
 
 There are no versioned releases. Every push to `main` that passes CI publishes
-`ghcr.io/maximn/remote-claude-code` as `:<commit sha>` and `:main`, and the
+`ghcr.io/maximn/afkd` as `:<commit sha>` and `:main`, and the
 deploy job tells Coolify to pull it, so `main` is what runs. To roll back,
 pin `IMAGE_TAG` to an earlier commit's sha ([coolify.md](coolify.md#image-and-deploys)).

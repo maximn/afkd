@@ -33,7 +33,7 @@ dockerfile_arg() {
     mise node npm npx corepack yarn pnpm \
     vi vim editor man gcc g++ pkg-config \
     dig ping nc lsof strace file tree eza rsync xz zip ssh \
-    t h pbcopy; do
+    afk pbcopy; do
     run in_box sh -c "command -v $tool"
     [ "$status" -eq 0 ] || {
       echo "missing from image: $tool"
@@ -187,16 +187,95 @@ dockerfile_arg() {
   [[ "$output" == /usr/share/man/* ]]
 }
 
-# bin/cc is the laptop-side helper that ssh-es to the box. It used to be
-# copied in as /usr/local/bin/cc, ahead of /usr/bin on PATH, so every `make`
-# and node-gyp build on the box tried to ssh to a host called "cc".
+# The laptop helper used to be called cc. It was copied in as
+# /usr/local/bin/cc, ahead of /usr/bin on PATH, so every `make` and node-gyp
+# build on the box tried to ssh to a host called "cc".
 @test "cc is the C compiler, not the laptop helper" {
   run in_box sh -c 'cc --version'
   [ "$status" -eq 0 ]
   [[ "$output" == *"Free Software Foundation"* ]]
+}
 
-  run in_box sh -c 'ls /usr/local/bin/cc /usr/local/bin/ch 2>/dev/null'
-  [ -z "$output" ]
+# afk on the box: /run/afkd is there, so it drives tmux itself. Each test uses
+# its own tmux socket directory, so sessions never leak between them.
+afk_on_box() {
+  docker exec -u dev -w /home/dev -e TMUX_TMPDIR="/tmp/afk-$BATS_TEST_NUMBER" "$BOX" \
+    sh -c 'mkdir -p "$TMUX_TMPDIR" && exec afk "$@"' afk "$@"
+}
+
+@test "afk ls on the box lists tmux sessions" {
+  run afk_on_box ls
+  [ "$status" -eq 0 ]
+  [ "$output" = "No active sessions" ]
+
+  docker exec -u dev -e TMUX_TMPDIR="/tmp/afk-$BATS_TEST_NUMBER" "$BOX" \
+    tmux new-session -d -s 'probe session'
+  run afk_on_box ls
+  [ "$status" -eq 0 ]
+  [[ "$output" == "probe session:"* ]]
+
+  run afk_on_box kill 'probe session'
+  [ "$status" -eq 0 ]
+  run afk_on_box ls
+  [ "$output" = "No active sessions" ]
+}
+
+@test "afk refuses what it cannot do on the box" {
+  run afk_on_box kill
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Usage: afk kill <session>"* ]]
+
+  run afk_on_box ssh
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already on the box"* ]]
+
+  run afk_on_box -l
+  [ "$status" -eq 2 ]
+}
+
+@test "afk herdr will not nest inside tmux" {
+  run as_dev env TMUX=/tmp/fake,1,0 afk herdr
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Inside tmux"* ]]
+}
+
+# afk on the laptop: run without the entrypoint, so there is no /run/afkd, and
+# with an ssh that prints what it was given and then runs the remote command
+# the way sshd would, against an afk that prints its arguments. That checks
+# the quoting end to end -- a name that reaches the box as two words, or as
+# shell, is the bug this guards against.
+afk_on_laptop() {
+  docker run --rm --label "${LABEL}=1" --user dev -e "AFK_HOST=${LAPTOP_AFK_HOST:-}" --entrypoint zsh "$IMAGE" -c '
+    mkdir -p /tmp/fake && cat > /tmp/fake/ssh <<"EOF"
+#!/bin/bash
+for a in "${@:1:$#-1}"; do echo "ssh:$a"; done
+afk() { printf "afk:%s\n" "$@"; }
+eval "${@: -1}"
+EOF
+    chmod +x /tmp/fake/ssh && PATH=/tmp/fake:$PATH exec afk "$@"' afk "$@"
+}
+
+@test "afk on the laptop runs itself on the box, one argument per argument" {
+  run afk_on_laptop "it's my; session"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'ssh:-t\nssh:afk\nafk:it\'s my; session' ]
+}
+
+@test "afk on the laptop asks for a terminal only to attach" {
+  run afk_on_laptop ls
+  [ "$output" = $'ssh:afk\nafk:ls' ]
+
+  run afk_on_laptop herdr ls
+  [ "$output" = $'ssh:afk\nafk:herdr\nafk:ls' ]
+
+  run afk_on_laptop herdr work
+  [ "$output" = $'ssh:-t\nssh:afk\nafk:herdr\nafk:work' ]
+}
+
+@test "afk on the laptop goes to AFK_HOST" {
+  LAPTOP_AFK_HOST=elsewhere
+  run afk_on_laptop ls
+  [ "$output" = $'ssh:elsewhere\nafk:ls' ]
 }
 
 # Native code is what agents hit in real repos: a Rust crate with openssl-sys,
@@ -407,9 +486,9 @@ interactive() {
   want="$(dockerfile_arg OMZ_REF)"
   [[ "$want" =~ ^[0-9a-f]{40}$ ]]
 
-  run in_box test -s /usr/local/share/remote-claude/zsh/omz/lib-git.zsh
+  run in_box test -s /usr/local/share/afkd/zsh/omz/lib-git.zsh
   [ "$status" -eq 0 ]
-  run in_box test -s /usr/local/share/remote-claude/zsh/omz/git.plugin.zsh
+  run in_box test -s /usr/local/share/afkd/zsh/omz/git.plugin.zsh
   [ "$status" -eq 0 ]
 }
 
@@ -454,7 +533,7 @@ interactive() {
     'x11forwarding no' 'maxauthtries 4' \
     'clientaliveinterval 300' 'clientalivecountmax 2' \
     'authorizedkeysfile /etc/ssh/authorized_keys/%u' \
-    'hostkey /var/lib/remote-claude/ssh/ssh_host_ed25519_key'; do
+    'hostkey /var/lib/afkd/ssh/ssh_host_ed25519_key'; do
     grep -qE "^${kv}$" <<<"$output" || {
       echo "not in effect: $kv"
       false
@@ -468,7 +547,7 @@ interactive() {
 # image rather than a running container, since the entrypoint creates them.
 @test "bakes no ssh host keys into the image" {
   run docker run --rm --entrypoint sh "$IMAGE" -c \
-    'ls /etc/ssh/ssh_host_* /var/lib/remote-claude/ssh/ssh_host_* 2>/dev/null | wc -l'
+    'ls /etc/ssh/ssh_host_* /var/lib/afkd/ssh/ssh_host_* 2>/dev/null | wc -l'
   [ "$status" -eq 0 ]
   [ "${output//[[:space:]]/}" = "0" ]
 }

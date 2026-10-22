@@ -3,8 +3,8 @@
 # asserts on the result, because every entrypoint bug this repo has shipped so
 # far was only visible once the container was actually running.
 
-IMAGE="${IMAGE:-remote-claude-code:ci}"
-LABEL="rcc-ci"
+IMAGE="${IMAGE:-afkd:ci}"
+LABEL="afkd-ci"
 
 # One throwaway keypair per test file: used both as the SSH login key and as
 # the GITHUB_SSH_KEY payload, so tests can assert the key survived the trip.
@@ -27,7 +27,7 @@ generate_keypair() {
 # array append here dies with it. The volumes then outlive the run: each one
 # holds the ssh host *private* keys the entrypoint persisted.
 make_volume() {
-  local v="rcc-ci-vol-$$-${RANDOM}"
+  local v="afkd-ci-vol-$$-${RANDOM}"
   docker volume create --label "${LABEL}=1" "$v" >/dev/null
   echo "$v" >> "${BATS_FILE_TMPDIR}/volumes"
   echo "$v"
@@ -46,13 +46,13 @@ start_box() {
   # runs setup_file in a shell of its own.
   export HOME_VOL CACHE_VOL SYSTEM_VOL
   boot_box -v "${HOME_VOL}:/home/dev" -v "${CACHE_VOL}:/home/dev/.cache" \
-    -v "${SYSTEM_VOL}:/var/lib/remote-claude" "$@"
+    -v "${SYSTEM_VOL}:/var/lib/afkd" "$@"
 }
 
 # Boots the image with exactly the mounts given and no others: a bare
 # `docker run`, an unseeded home, the legacy root layout.
 boot_box() {
-  BOX="rcc-ci-$$-${RANDOM}"
+  BOX="afkd-ci-$$-${RANDOM}"
   export BOX
   docker run -d --name "$BOX" --label "${LABEL}=1" "$@" "$IMAGE" >/dev/null
 }
@@ -125,7 +125,7 @@ host_port() {
 }
 
 # Anything that escapes this (an interrupted run) is still labelled:
-# `docker volume prune --filter label=rcc-ci=1` sweeps the lot.
+# `docker volume prune --filter label=afkd-ci=1` sweeps the lot.
 cleanup_box() {
   [ -n "${BOX:-}" ] && docker rm -f "$BOX" >/dev/null 2>&1
   local vols="${BATS_FILE_TMPDIR}/volumes" v

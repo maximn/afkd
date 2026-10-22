@@ -2,7 +2,7 @@
 
 ## Setup (New Application)
 
-1. Create a new application from GitHub repo `maximn/remote-claude-code`
+1. Create a new application from GitHub repo `maximn/afkd`
 2. Branch: `main`, Build Pack: `Docker Compose`, Base Directory: `/`, Docker
    Compose Location: `/docker-compose.yaml`
 3. Fill in the environment variables Coolify lists, then deploy
@@ -14,7 +14,7 @@ recreating the app in the UI can quietly drop.
 ## Image and deploys
 
 Coolify does not build the image. CI builds and tests it, and on every push to
-`main` publishes it to `ghcr.io/maximn/remote-claude-code` as `:<commit sha>`
+`main` publishes it to `ghcr.io/maximn/afkd` as `:<commit sha>`
 and `:main`, then asks Coolify to deploy, which pulls `:main`. Building on the
 host instead cost minutes of downtime per deploy and gigabytes of build cache
 on its disk, and ran an image CI had never tested.
@@ -58,7 +58,7 @@ not deploy while it is empty; the rest are optional and start out blank.
 | `SSH_PUBLIC_KEYS` | Yes | Multiline — one SSH public key per line (`cat ~/.ssh/id_ed25519.pub`) |
 | `GIT_USER_NAME` | Recommended | Git author name. No default — unset means git refuses to commit until you set it on the box |
 | `GIT_USER_EMAIL` | Recommended | Git author email. Same as above |
-| `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access, either a raw PEM key or base64-encoded (`base64 < ~/.ssh/remote-claude \| tr -d '\n'`) — the entrypoint detects which. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
+| `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access, either a raw PEM key or base64-encoded (`base64 < ~/.ssh/afkd-github \| tr -d '\n'`) — the entrypoint detects which. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
 
 `.env.example` at the repo root lists every variable the image reads, including
 the agent credentials and the optional ntfy notifications not shown here.
@@ -76,7 +76,7 @@ Declared in the compose file; Coolify names each one `<app uuid>_<name>`.
 |---|---|---|
 | `home` | `/home/dev` | All of dev's home: agent auth, settings and sessions (`~/.claude`, `~/.claude.json`, `~/.codex`), app configs (`~/.config`), projects (`~/dev`), JetBrains plugins (`~/.local/share`), your own dotfiles |
 | `cache` | `/home/dev/.cache` | Regenerable-but-expensive caches: npm (pointed here by `NPM_CONFIG_CACHE` in the image's zsh environment), mise downloads, JetBrains IDE backend and project indexes |
-| `system` | `/var/lib/remote-claude` | The SSH host keys, kept out of home so dev cannot read them |
+| `system` | `/var/lib/afkd` | The SSH host keys, kept out of home so dev cannot read them |
 
 Home is one volume rather than one per directory. Anything a tool writes there
 survives a redeploy, including the tools nobody thought to give a volume, and
@@ -104,7 +104,7 @@ on the `Dockerfile` build pack. Do this move first, on that build pack, and
 one-off, and the old volumes stay untouched until you remove them yourself:
 
 1. **Add the new volumes, and keep the old ones mounted.** Add `*-home` at
-   `/home/dev` and `*-system` at `/var/lib/remote-claude`. If there is a
+   `/home/dev` and `*-system` at `/var/lib/afkd`. If there is a
    `*-cache` at `/root/.cache`, change its mount path to `/home/dev/.cache`
    (the cache is reused, not copied); otherwise add one there. Leave
    whichever of `/root/.claude`, `/root/.config`, `/root/.codex`, `/root/dev`,
@@ -116,8 +116,8 @@ one-off, and the old volumes stay untouched until you remove them yourself:
    `~/.ssh/config` ([ssh.md](ssh.md)).
 4. **Migrate:**
    ```bash
-   sudo rcc-migrate --dry-run   # what it will copy
-   sudo rcc-migrate
+   sudo afkd-migrate --dry-run   # what it will copy
+   sudo afkd-migrate
    ```
    It copies the old volumes into `~`, moves `.claude.json` up to
    `~/.claude.json`, re-keys Claude Code's per-project state from `/root/dev/…`

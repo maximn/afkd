@@ -1,10 +1,10 @@
 #!/bin/bash
-# rcc-migrate - move a root-era deployment into dev's home, once.
+# afkd-migrate - move a root-era deployment into dev's home, once.
 #
 # Images before the dev user ran everything as root, with a volume per
 # directory under /root. Run this on the deploy that mounts the new volumes
 # and still has the old ones at their old paths (the runbook is in coolify.md
-# in the remote-claude-code repo):
+# in the afkd repo):
 #
 #   /root/.claude        -> ~/.claude, its .claude.json moved up to ~/.claude.json
 #   /root/.config        -> ~/.config, less the SSH host keys
@@ -19,13 +19,13 @@
 # volume, reused -- is handed to dev. The host keys are not this script's: the
 # entrypoint adopts them at boot, before sshd needs them.
 #
-# Usage: sudo rcc-migrate [--dry-run] [--force]
+# Usage: sudo afkd-migrate [--dry-run] [--force]
 #   --dry-run  print what would be done, and do nothing
 #   --force    run again after a completed migration
 set -euo pipefail
 
 TARGET=/home/dev
-MARKER=/var/lib/remote-claude/migrated-from-root
+MARKER=/var/lib/afkd/migrated-from-root
 SOURCES=(.claude .config .codex dev .local/share)
 
 dry_run=0
@@ -35,12 +35,12 @@ for arg in "$@"; do
     --dry-run) dry_run=1 ;;
     --force) force=1 ;;
     -h | --help) sed -n '2,/^set /{/^set /d; s/^# \{0,1\}//; p;}' "$0"; exit 0 ;;
-    *) echo "rcc-migrate: unknown option '$arg' (see --help)" >&2; exit 2 ;;
+    *) echo "afkd-migrate: unknown option '$arg' (see --help)" >&2; exit 2 ;;
   esac
 done
 
 if [ "$(id -u)" != 0 ]; then
-  echo "rcc-migrate reads /root, which only root can: run it as 'sudo rcc-migrate'." >&2
+  echo "afkd-migrate reads /root, which only root can: run it as 'sudo afkd-migrate'." >&2
   exit 1
 fi
 
@@ -196,7 +196,7 @@ fi
 
 # Strips the notification hooks older images merged into settings.json, the
 # same clean-up the next boot would do.
-runuser -u dev -- /usr/local/libexec/remote-claude/home-init
+runuser -u dev -- /usr/local/libexec/afkd/home-init
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$MARKER"
 echo "done. Remove the old /root volumes from the deployment and redeploy."

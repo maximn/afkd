@@ -24,15 +24,15 @@ compose() {
 # The image under test rather than a fresh build of the context, so this file
 # checks the same image as every other, and fast.
 compose_up() {
-  PROJECT="rcc-ci-compose-$$-${RANDOM}"
+  PROJECT="afkd-ci-compose-$$-${RANDOM}"
   export PROJECT
-  printf 'services:\n  remote-claude:\n    image: %s\n' "$IMAGE" \
+  printf 'services:\n  afkd:\n    image: %s\n' "$IMAGE" \
     > "${BATS_TEST_TMPDIR}/image.yaml"
   compose SSH_PUBLIC_KEYS="$PUBKEY" SSH_PORT=127.0.0.1:0 \
     docker compose -p "$PROJECT" -f "$COMPOSE_FILE" -f "${BATS_TEST_TMPDIR}/image.yaml" \
     up -d --no-build --pull never --quiet-pull >/dev/null 2>&1
   BOX="$(compose SSH_PUBLIC_KEYS="$PUBKEY" \
-    docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps -q remote-claude)"
+    docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps -q afkd)"
   export BOX
 }
 
@@ -63,7 +63,7 @@ compose_config() {
   # CLAUDE_* and CODEX_* are open-ended families, shown there by example.
   documented="$(sed -nE 's/^#?([A-Z][A-Z0-9_]*)=.*/\1/p' "${BATS_TEST_DIRNAME}/../.env.example" \
     | grep -vE '^(CLAUDE|CODEX)_' | sort -u)"
-  declared="$(compose_config | jq -r '.services["remote-claude"].environment | keys[]' | sort -u)"
+  declared="$(compose_config | jq -r '.services["afkd"].environment | keys[]' | sort -u)"
   [ "$documented" = "$declared" ] || {
     diff <(echo "$documented") <(echo "$declared")
     false
@@ -77,12 +77,12 @@ compose_config() {
 @test "pulls the published image rather than building on the host" {
   run compose_config
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.services["remote-claude"].build' <<<"$output")" = null ]
-  [ "$(jq -r '.services["remote-claude"].image' <<<"$output")" = ghcr.io/maximn/remote-claude-code:main ]
+  [ "$(jq -r '.services["afkd"].build' <<<"$output")" = null ]
+  [ "$(jq -r '.services["afkd"].image' <<<"$output")" = ghcr.io/maximn/afkd:main ]
 
   run compose SSH_PUBLIC_KEYS="$PUBKEY" IMAGE_TAG=0123abc \
     docker compose -f "$COMPOSE_FILE" config --format json
-  [ "$(jq -r '.services["remote-claude"].image' <<<"$output")" = ghcr.io/maximn/remote-claude-code:0123abc ]
+  [ "$(jq -r '.services["afkd"].image' <<<"$output")" = ghcr.io/maximn/afkd:0123abc ]
 }
 
 @test "boots with its volumes, fd limit and port" {
@@ -93,7 +93,7 @@ compose_config() {
   [ "$output" = "65536" ]
 
   run docker inspect -f '{{range .Mounts}}{{.Type}} {{.Destination}}{{"\n"}}{{end}}' "$BOX"
-  [ "$(sort <<<"$output" | sed '/^$/d')" = $'volume /home/dev\nvolume /home/dev/.cache\nvolume /var/lib/remote-claude' ]
+  [ "$(sort <<<"$output" | sed '/^$/d')" = $'volume /home/dev\nvolume /home/dev/.cache\nvolume /var/lib/afkd' ]
 
   run in_box stat -c '%U %a' /home/dev /home/dev/.cache
   [ "$output" = $'dev 700\ndev 755' ]
@@ -112,10 +112,10 @@ compose_config() {
 
   run in_box sh -c 'printenv GH_TOKEN; printenv NTFY_URL'
   [ "$output" = "" ]
-  run in_box cat /run/remote-claude/env.zsh
+  run in_box cat /run/afkd/env.zsh
   [ "$output" = "" ]
   run in_box test -e /etc/claude-code/managed-settings.d/50-ntfy.json
   [ "$status" -ne 0 ]
-  run in_box test -e /run/remote-claude/github_ed25519
+  run in_box test -e /run/afkd/github_ed25519
   [ "$status" -ne 0 ]
 }

@@ -174,7 +174,7 @@ wait_auth_refusal() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
   local before
-  before="$(in_box ssh-keygen -lf /var/lib/remote-claude/ssh/ssh_host_ed25519_key.pub)"
+  before="$(in_box ssh-keygen -lf /var/lib/afkd/ssh/ssh_host_ed25519_key.pub)"
 
   docker rm -f "$BOX" >/dev/null
   BOX=""
@@ -184,7 +184,7 @@ wait_auth_refusal() {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
   local after
-  after="$(in_box ssh-keygen -lf /var/lib/remote-claude/ssh/ssh_host_ed25519_key.pub)"
+  after="$(in_box ssh-keygen -lf /var/lib/afkd/ssh/ssh_host_ed25519_key.pub)"
 
   [ -n "$before" ]
   [ "$before" = "$after" ]

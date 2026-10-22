@@ -19,7 +19,7 @@ teardown() {
 @test "refuses to start when SSH_PUBLIC_KEYS is unset" {
   local vol
   vol="$(make_volume)"
-  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/remote-claude" "$IMAGE"
+  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/afkd" "$IMAGE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SSH_PUBLIC_KEYS is empty"* ]]
 }
@@ -27,14 +27,14 @@ teardown() {
 @test "refuses to start when SSH_PUBLIC_KEYS is empty" {
   local vol
   vol="$(make_volume)"
-  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/remote-claude" \
+  run docker run --rm --label "${LABEL}=1" -v "${vol}:/var/lib/afkd" \
     -e SSH_PUBLIC_KEYS= "$IMAGE"
   [ "$status" -ne 0 ]
   [[ "$output" == *"SSH_PUBLIC_KEYS is empty"* ]]
 }
 
 @test "boots with no volumes mounted" {
-  # Nothing in the image creates /var/lib/remote-claude, but the entrypoint
+  # Nothing in the image creates /var/lib/afkd, but the entrypoint
   # keeps the host keys there. A deployment always mounts a volume on it; a
   # bare `docker run` must still work, or the image is undebuggable locally.
   boot_box -e SSH_PUBLIC_KEYS="$PUBKEY"
@@ -68,7 +68,7 @@ teardown() {
 
 # --- SSH host keys -------------------------------------------------------------
 
-HOST_KEYS=/var/lib/remote-claude/ssh
+HOST_KEYS=/var/lib/afkd/ssh
 
 @test "keeps the host keys on the system volume, readable by root alone" {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
@@ -84,7 +84,7 @@ HOST_KEYS=/var/lib/remote-claude/ssh
 }
 
 # Before the dev user, the keys were persisted in /root/.config. The first
-# boot of this image on that deployment -- the one rcc-migrate runs on -- has
+# boot of this image on that deployment -- the one afkd-migrate runs on -- has
 # to come up as the same host, or every client sees its key change.
 @test "adopts the host keys an older image persisted in /root/.config" {
   local legacy want
@@ -208,7 +208,7 @@ HOST_KEYS=/var/lib/remote-claude/ssh
 # The key lives under /run, regenerated from the environment on every boot,
 # and is wired in through the system ssh_config.d -- so it never reaches home,
 # and ~/.ssh/config stays the user's own.
-GITHUB_KEY=/run/remote-claude/github_ed25519
+GITHUB_KEY=/run/afkd/github_ed25519
 
 # What ssh would actually do for github.com, rather than what one file says:
 # `ssh -G` prints the configuration after every Include has been merged. Its
@@ -361,10 +361,10 @@ assert_github_key_usable() {
     zsh -c 'printf "%s|%s" "$CLAUDE_CODE_USE_BEDROCK" "$CODEX_HOME"'
   [ "$output" = "1|/home/dev/.codex" ]
 
-  run in_box grep -c 'GH_TOKEN' /run/remote-claude/env.zsh
+  run in_box grep -c 'GH_TOKEN' /run/afkd/env.zsh
   [ "$output" = "0" ]
 
-  run in_box stat -c '%U %a' /run/remote-claude/env.zsh
+  run in_box stat -c '%U %a' /run/afkd/env.zsh
   [ "$output" = "dev 600" ]
 }
 
@@ -377,7 +377,7 @@ assert_github_key_usable() {
     -e GH_TOKEN= -e ANTHROPIC_API_KEY= -e CLAUDE_CODE_USE_BEDROCK= -e CODEX_HOME=/home/dev/.codex
   wait_ready
 
-  run in_box grep -cE 'GH_TOKEN|ANTHROPIC_API_KEY|CLAUDE_CODE_USE_BEDROCK' /run/remote-claude/env.zsh
+  run in_box grep -cE 'GH_TOKEN|ANTHROPIC_API_KEY|CLAUDE_CODE_USE_BEDROCK' /run/afkd/env.zsh
   [ "$output" = "0" ]
 
   run as_dev env -u GH_TOKEN zsh -c '[ -z "${GH_TOKEN+x}" ] && printf %s "$CODEX_HOME"'

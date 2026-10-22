@@ -135,7 +135,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tree \
     openssh-client \
 # A directory listing with each file's git status, behind the ll/la/lt aliases
-# in remote-claude.zshrc. Plain `ls` stays GNU ls: an agent's shell can read
+# in afkd.zshrc. Plain `ls` stays GNU ls: an agent's shell can read
 # that config too, and agents parse what ls prints.
     eza \
 # JetBrains remote development runs a full desktop IDE on the box and rasterizes
@@ -198,11 +198,11 @@ RUN curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o /etc/apt/keyr
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
 ARG OMZ_REF=964ddf789b022b6958b27d02d7fa54f552de21e9
-RUN mkdir -p /usr/local/share/remote-claude/zsh/omz \
+RUN mkdir -p /usr/local/share/afkd/zsh/omz \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
-         -o /usr/local/share/remote-claude/zsh/omz/lib-git.zsh \
+         -o /usr/local/share/afkd/zsh/omz/lib-git.zsh \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/plugins/git/git.plugin.zsh" \
-         -o /usr/local/share/remote-claude/zsh/omz/git.plugin.zsh
+         -o /usr/local/share/afkd/zsh/omz/git.plugin.zsh
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.5
@@ -269,8 +269,8 @@ COPY mise/system.toml /etc/mise/config.toml
 # reaches none of those, since sshd builds each session's environment from
 # scratch; it is set below only for what runs outside a login (docker exec,
 # the entrypoint).
-COPY zsh/remote-claude.zshenv /etc/zsh/remote-claude.zshenv
-RUN echo 'source /etc/zsh/remote-claude.zshenv' >> /etc/zsh/zshenv
+COPY zsh/afkd.zshenv /etc/zsh/afkd.zshenv
+RUN echo 'source /etc/zsh/afkd.zshenv' >> /etc/zsh/zshenv
 ENV PATH="/usr/local/share/mise/shims:${PATH}"
 
 # The default Node, for anything with no version file of its own. Installed
@@ -345,46 +345,46 @@ RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 # Replaces `sed -i 's/#PasswordAuthentication yes/...' sshd_config`, which
 # edited a *commented* line and so no-opped into a box with password auth on
 # the day Debian reworded it. See the header in the file itself.
-COPY sshd_config.d/99-remote-claude.conf /etc/ssh/sshd_config.d/99-remote-claude.conf
+COPY sshd_config.d/99-afkd.conf /etc/ssh/sshd_config.d/99-afkd.conf
 # A hardening file that is silently not read is worse than no hardening file,
 # so assert the end state rather than the mechanism: `sshd -T` prints the
 # config as sshd has actually merged it. It refuses to run without the host
 # keys it is configured with, hence the keygen -- and the rm in the same
 # layer, so none are baked into the image (tests/image.bats asserts that
 # separately).
-RUN chmod 644 /etc/ssh/sshd_config.d/99-remote-claude.conf \
-    && install -d -m 700 /var/lib/remote-claude/ssh \
+RUN chmod 644 /etc/ssh/sshd_config.d/99-afkd.conf \
+    && install -d -m 700 /var/lib/afkd/ssh \
     && for type in ed25519 ecdsa rsa; do \
-         ssh-keygen -q -t "${type}" -N '' -f "/var/lib/remote-claude/ssh/ssh_host_${type}_key"; \
+         ssh-keygen -q -t "${type}" -N '' -f "/var/lib/afkd/ssh/ssh_host_${type}_key"; \
        done \
     && /usr/sbin/sshd -T > /tmp/sshd-effective.conf \
     && for kv in 'passwordauthentication no' 'kbdinteractiveauthentication no' \
                  'permitrootlogin no' 'allowusers dev' \
                  'x11forwarding no' 'maxauthtries 4' 'clientaliveinterval 300' \
                  'authorizedkeysfile /etc/ssh/authorized_keys/%u' \
-                 'hostkey /var/lib/remote-claude/ssh/ssh_host_ed25519_key'; do \
+                 'hostkey /var/lib/afkd/ssh/ssh_host_ed25519_key'; do \
          grep -qx "${kv}" /tmp/sshd-effective.conf \
            || { echo "sshd drop-in not in effect: ${kv}" >&2; exit 1; }; \
        done \
-    && rm -rf /tmp/sshd-effective.conf /var/lib/remote-claude
+    && rm -rf /tmp/sshd-effective.conf /var/lib/afkd
 
-# Only the server-side helpers. cc and ch run on the laptop and ssh *to* the
-# box; shipped here they did nothing useful, and /usr/local/bin/cc shadowed
-# the C compiler that make and node-gyp invoke by that name.
-COPY bin/t /usr/local/bin/t
-COPY bin/h /usr/local/bin/h
+# afk is the same script on the laptop and here: it notices /run/afkd and
+# drives tmux or herdr directly instead of ssh-ing. Nothing else from bin/ is
+# named after a real tool -- the laptop helper used to be called cc, and
+# shipped here it shadowed the C compiler that make and node-gyp invoke.
+COPY bin/afk /usr/local/bin/afk
 COPY bin/pbcopy /usr/local/bin/pbcopy
-RUN chmod +x /usr/local/bin/t /usr/local/bin/h /usr/local/bin/pbcopy
+RUN chmod +x /usr/local/bin/afk /usr/local/bin/pbcopy
 COPY tmux.conf /etc/tmux.conf
 
 # The image's interactive shell setup, kept out of home: sourced from the
 # system zshrc, ahead of the user's own ~/.zshrc. That file is seeded from
 # /etc/skel -- which also keeps zsh's new-user wizard from ever running -- and
 # is the user's from then on.
-COPY git-aliases.zsh /usr/local/share/remote-claude/zsh/git-aliases.zsh
-COPY zsh/remote-claude.zshrc /etc/zsh/remote-claude.zshrc
+COPY git-aliases.zsh /usr/local/share/afkd/zsh/git-aliases.zsh
+COPY zsh/afkd.zshrc /etc/zsh/afkd.zshrc
 COPY zsh/skel.zshrc /etc/skel/.zshrc
-RUN echo 'source /etc/zsh/remote-claude.zshrc' >> /etc/zsh/zshrc \
+RUN echo 'source /etc/zsh/afkd.zshrc' >> /etc/zsh/zshrc \
     && cp /etc/skel/.zshrc /root/.zshrc
 
 # The one login. Its home is created here, from the skeleton above, because
@@ -403,9 +403,9 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/bin/zsh dev \
     && chmod 440 /etc/sudoers.d/dev \
     && visudo -cf /etc/sudoers.d/dev
 
-COPY home-init.sh /usr/local/libexec/remote-claude/home-init
-COPY rcc-migrate.sh /usr/local/bin/rcc-migrate
-RUN chmod 755 /usr/local/libexec/remote-claude/home-init /usr/local/bin/rcc-migrate
+COPY home-init.sh /usr/local/libexec/afkd/home-init
+COPY afkd-migrate.sh /usr/local/bin/afkd-migrate
+RUN chmod 755 /usr/local/libexec/afkd/home-init /usr/local/bin/afkd-migrate
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
