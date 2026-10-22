@@ -27,6 +27,10 @@ Once per deployment:
    docker login ghcr.io -u <github user> --password-stdin
    ```
    Coolify runs Docker as the user it connects with, so log in as that user.
+   The login is saved in that user's `~/.docker/config.json`, which Coolify
+   mounts into every deploy. When the token expires, deploys fail at the pull
+   while the running box carries on, so put its expiry in a calendar and
+   repeat the login with a new token before then.
 2. **Turn off Automatic Deployment** in the app's Advanced settings. Coolify's
    own push webhook fires before CI has published anything, so it would
    redeploy the image it already has.
