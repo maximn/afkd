@@ -108,7 +108,10 @@ Mark a breaking change -- one that needs the deployment changed when it lands
 
 ## Deploys
 
-There are no versioned releases. Every push to `main` that passes CI publishes
-`ghcr.io/maximn/afkd` as `:<commit sha>` and `:main`, and the
-deploy job tells Coolify to pull it, so `main` is what runs. To roll back,
-pin `IMAGE_TAG` to an earlier commit's sha ([coolify.md](coolify.md#image-and-deploys)).
+There are no versioned releases. Every push to `main` that passes CI and changes
+the image publishes `ghcr.io/maximn/afkd` as `:<commit sha>` and `:main`, and
+the deploy job tells Coolify to pull it, so `main` is what runs. A push that
+changes nothing the image reads -- the list in `ci.yml`'s `changes` job --
+neither publishes nor deploys, so docs merge without restarting the box. To
+roll back, pin `IMAGE_TAG` to the sha of an earlier commit that published
+([coolify.md](coolify.md#image-and-deploys)).
