@@ -96,7 +96,8 @@ afk ssh             # a plain shell, no multiplexer
 
 The image ships the same `afk`, which on the box drives tmux and herdr
 directly: the same commands work over plain SSH from a phone. A host alias
-other than `afk` goes in `AFK_HOST`.
+other than `afk` goes in `AFK_HOST`. For herdr on a phone, a touch client
+beats a terminal; see [phone.md](phone.md).
 
 On a new box, sign the agents in once — their credentials live in the mounted
 volumes, so this survives redeploys:
