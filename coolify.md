@@ -14,10 +14,12 @@ recreating the app in the UI can quietly drop.
 ## Image and deploys
 
 Coolify does not build the image. CI builds and tests it, and on every push to
-`main` publishes it to `ghcr.io/maximn/afkd` as `:<commit sha>`
+`main` that changes it publishes it to `ghcr.io/maximn/afkd` as `:<commit sha>`
 and `:main`, then asks Coolify to deploy, which pulls `:main`. Building on the
 host instead cost minutes of downtime per deploy and gigabytes of build cache
-on its disk, and ran an image CI had never tested.
+on its disk, and ran an image CI had never tested. A push that leaves the
+image alone, docs for one, does not deploy: a deploy recreates the container
+and ends whatever is running on the box.
 
 Once per deployment:
 
@@ -44,8 +46,9 @@ Once per deployment:
    Without `COOLIFY_URL` the deploy job is skipped and images are still
    published, so deploy from Coolify by hand.
 
-**Rolling back:** set `IMAGE_TAG` to the commit sha of a good build in
-Coolify's Environment Variables and redeploy. Clear it to follow `main` again.
+**Rolling back:** set `IMAGE_TAG` to the sha of a commit that published a good
+build in Coolify's Environment Variables and redeploy. Clear it to follow `main`
+again.
 
 ## Environment Variables
 
