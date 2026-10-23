@@ -40,7 +40,8 @@ afk ssh          # plain SSH, no multiplexer
 ```
 
 The same `afk` is on the box, where it skips the SSH: over plain SSH from a
-phone, run `afk`, `afk work` or `afk ls` there.
+phone, run `afk`, `afk work` or `afk ls` there. For herdr from a phone, see
+[phone.md](phone.md).
 
 Inside a tmux session, run `claude` or `codex` to start coding.
 
