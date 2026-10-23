@@ -119,6 +119,10 @@ jobs:
   # could not have changed, and while this repo is private those minutes come
   # out of a monthly allowance.
   #
+  # On main the same answer gates the publish and the deploy. A deploy
+  # recreates the container, ending every tmux session and agent on the box,
+  # and a docs merge used to do that for an image with nothing new in it.
+  #
   # Not `paths-ignore` on the trigger: that skips the whole workflow, and the
   # `Build & test image` check below would then never report at all. Here the
   # build is skipped and the check still reports, as a pass.
@@ -134,30 +138,59 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # To find main's last green run, the push diff's base.
+      actions: read
     outputs:
       image: ${{ steps.diff.outputs.image }}
     steps:
-      # Through the API rather than a checkout and a git diff: the PR's file
-      # list is all this needs, and a clone deep enough to reach the merge base
-      # costs more than the answer is worth.
-      - name: Diff against the base branch
+      # Through the API rather than a checkout and a git diff: the file list is
+      # all this needs, and a clone deep enough to reach the merge base costs
+      # more than the answer is worth.
+      #
+      # A push diffs against main's last green run, not against the commit
+      # before it. Runs on main cancel each other, so the commit before may
+      # never have been published -- an image change it carried would ride
+      # past behind a docs commit. A green run means everything up to its
+      # commit is what the box runs, either built there or unchanged since an
+      # earlier green run, so changes from cancelled and failed runs roll
+      # forward into the next diff. Anything that leaves the base unclear
+      # builds: no green run yet, a history rewritten since, or a diff past
+      # the compare API's 300-file cap. A manual run always builds, which is
+      # how to force a redeploy.
+      - name: Diff against what is deployed
         id: diff
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # A push to main publishes what it builds, so it always builds.
-          if [ "$EVENT" != pull_request ]; then
+          build() {
+            echo "build: $1"
             echo "image=true" >> "$GITHUB_OUTPUT"
             exit 0
-          fi
+          }
           # Fetched before the loop rather than fed to it by process
           # substitution, whose exit status nothing checks: a failed API call
           # would read as an empty file list and skip the build.
-          files="$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')"
+          case "$EVENT" in
+            pull_request)
+              files="$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')" ;;
+            push)
+              base="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
+                --jq '[.workflow_runs[] | select(.event != "pull_request")][0].head_sha // ""')"
+              [ -n "$base" ] || build "no green run on main to diff against"
+              compare="$(gh api "repos/$GH_REPO/compare/$base...$SHA" \
+                --jq '{status, count: (.files | length), files: [.files[].filename]}')"
+              [ "$(jq -r .status <<< "$compare")" = ahead ] || build "$SHA is not ahead of $base"
+              [ "$(jq .count <<< "$compare")" -lt 300 ] || build "too many files to list since $base"
+              echo "diffing against $base"
+              files="$(jq -r '.files[]' <<< "$compare")" ;;
+            *)
+              build "$EVENT run" ;;
+          esac
           image=false
           while IFS= read -r f; do
             case "$f" in
@@ -290,10 +323,13 @@ jobs:
   # a token that can write packages while it runs a PR's code. The build reads
   # the cache the test job just wrote for this commit, so it replays the tested
   # layers rather than re-deriving them.
+  #
+  # Nothing to publish when the image did not change, and so nothing to deploy:
+  # the jobs behind this one skip with it, and the box keeps running.
   publish:
     name: Publish image (${{ matrix.arch }})
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, build-and-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.image == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:

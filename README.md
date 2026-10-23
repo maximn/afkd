@@ -37,8 +37,8 @@ build the day it rolls.
 
 [docker-compose.yaml](docker-compose.yaml) is the whole deployment: the image,
 the published port, the three volumes and the fd limit. The image is the one CI
-publishes to `ghcr.io/maximn/afkd` for every commit on `main`, so
-pull access to it comes first (`docker login ghcr.io`). See
+publishes to `ghcr.io/maximn/afkd` for every commit on `main` that
+changes it, so pull access to it comes first (`docker login ghcr.io`). See
 [coolify.md](coolify.md) for running it on Coolify.
 
 ```bash
