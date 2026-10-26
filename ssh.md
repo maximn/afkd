@@ -70,19 +70,12 @@ Host afk-work
     IdentitiesOnly yes
 ```
 
-`AFK_HOST` picks the box. Set it per project with [direnv](https://direnv.net),
-so a bare `afk` from a work checkout goes to the work box:
-
-```bash
-# ~/dev/work/.envrc
-export AFK_HOST=afk-work
-```
-
-Or once per command, or behind an alias:
+`AFK_HOST` picks the box, once per command or behind an alias per box:
 
 ```bash
 AFK_HOST=afk-work afk herdr api
 alias afkw='AFK_HOST=afk-work afk'
+alias afkp='AFK_HOST=afk-personal afk'
 ```
 
 ## Troubleshooting
