@@ -418,19 +418,23 @@ assert_github_key_usable() {
 # the user has, and never written into home along with the token they carry.
 NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
 
+# BOX_NAME arrives empty, as it does from a compose file that leaves it
+# blank: no name means the titles carry none, not an empty "()".
 @test "writes notification hooks to managed settings when NTFY_URL is set" {
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
-    -e NTFY_URL=https://ntfy.example.com/claude -e NTFY_TOKEN=tk_test
+    -e NTFY_URL=https://ntfy.example.com/claude -e NTFY_TOKEN=tk_test -e BOX_NAME=
   wait_ready
 
-  run in_box jq -re '.hooks.Notification[0].hooks[0].command' "$NTFY_SETTINGS"
+  run hook_argv "$(notification_hook_command)" '{"message":"permission needed"}'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"ntfy.example.com/claude"* ]]
-  [[ "$output" == *"tk_test"* ]]
+  [[ "$output" == *"ARG[https://ntfy.example.com/claude]"* ]]
+  [[ "$output" == *"ARG[Authorization: Bearer tk_test]"* ]]
+  [[ "$output" == *"ARG[Title: Claude needs you]"* ]]
 
-  run in_box jq -re '.hooks.Stop[0].hooks[0].command' "$NTFY_SETTINGS"
+  run hook_argv "$(stop_hook_command)"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"turn complete"* ]]
+  [[ "$output" == *"ARG[turn complete]"* ]]
+  [[ "$output" == *"ARG[Title: Claude finished]"* ]]
 
   # A hook's stdout is read by Claude Code as its decision, so the ntfy
   # server's response must never reach it.
@@ -535,20 +539,30 @@ JSON
 # Asserting on the command string alone is not enough: one that reads fine can
 # still be cutting a token in half. Swapping curl for a stub that prints its
 # argv shows what the hook would actually send.
+#
+# The hook runs in the agent's session, which carries none of the box's own
+# environment, so it runs here without BOX_NAME: a hook that read it at
+# runtime instead of carrying it from boot would otherwise pass. The second
+# argument is the hook's stdin, Claude's event.
 hook_argv() {
-  docker exec -i "$BOX" bash -s -- "$1" <<'STUB'
+  docker exec -i "$BOX" bash -s <<'STUB'
 mkdir -p /tmp/stub
 cat > /tmp/stub/curl <<'CURL'
 #!/bin/bash
 printf 'ARG[%s]\n' "$@"
 CURL
 chmod +x /tmp/stub/curl
-PATH=/tmp/stub:$PATH bash -c "$1"
 STUB
+  docker exec -i "$BOX" env -u BOX_NAME \
+    bash -c 'PATH=/tmp/stub:$PATH exec bash -c "$1"' _ "$1" <<<"${2:-}"
 }
 
 stop_hook_command() {
   in_box jq -re '.hooks.Stop[0].hooks[0].command' "$NTFY_SETTINGS"
+}
+
+notification_hook_command() {
+  in_box jq -re '.hooks.Notification[0].hooks[0].command' "$NTFY_SETTINGS"
 }
 
 # The payloads write a file rather than echo a word: the word would also
@@ -602,22 +616,14 @@ assert_not_injected() {
   assert_not_injected "$output"
 }
 
-# --- which box is paging -------------------------------------------------------
+# --- which box this is ---------------------------------------------------------
 #
-# One deployment per account sends to the same phone. BOX_NAME is what tells
-# the notifications apart; unset, the titles stay what they always were.
-
-# The Notification hook reads Claude's event from stdin, so it gets one. Run
-# after hook_argv, which installs the curl stub.
-notification_argv() {
-  local cmd
-  cmd="$(in_box jq -re '.hooks.Notification[0].hooks[0].command' "$NTFY_SETTINGS")"
-  docker exec -i "$BOX" env PATH=/tmp/stub:/usr/local/bin:/usr/bin:/bin \
-    bash -c "$cmd" <<<'{"message":"permission needed"}'
-}
+# One deployment per account pages the same phone. BOX_NAME is what tells the
+# notifications apart, and docker-compose.yaml makes it the hostname the
+# prompt, tmux and herdr show.
 
 @test "notification titles name the box when BOX_NAME is set" {
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+  start_box --hostname work -e SSH_PUBLIC_KEYS="$PUBKEY" \
     -e NTFY_URL=https://ntfy.example.com/claude -e BOX_NAME=work
   wait_ready
 
@@ -625,41 +631,64 @@ notification_argv() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"ARG[Title: Claude finished (work)]"* ]]
 
-  run notification_argv
+  run hook_argv "$(notification_hook_command)" '{"message":"permission needed"}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"ARG[Title: Claude needs you (work)]"* ]]
+
+  run box_logs
+  [[ "$output" != *"BOX_NAME"* ]]
 }
 
-@test "notification titles are unchanged without BOX_NAME" {
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e NTFY_URL=https://ntfy.example.com/claude
-  wait_ready
-
-  run hook_argv "$(stop_hook_command)"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ARG[Title: Claude finished]"* ]]
-
-  run notification_argv
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ARG[Title: Claude needs you]"* ]]
-}
-
-@test "a box name full of shell metacharacters cannot escape the hook command" {
+@test "a box name full of shell metacharacters cannot escape either hook command" {
   local nasty='w`touch /tmp/pwned`$(touch /tmp/pwned)'"'"'; touch /tmp/pwned; id;'
   start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
     -e NTFY_URL=https://ntfy.example.com/claude -e BOX_NAME="$nasty"
   wait_ready
 
-  local cmd
-  cmd="$(stop_hook_command)"
+  local stop notification
+  stop="$(stop_hook_command)"
+  notification="$(notification_hook_command)"
 
-  run in_box bash -n -c "$cmd"
+  run in_box bash -n -c "$stop"
+  [ "$status" -eq 0 ]
+  run in_box bash -n -c "$notification"
   [ "$status" -eq 0 ]
 
-  run hook_argv "$cmd"
+  run hook_argv "$stop"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ARG[Title: Claude finished (${nasty})]"* ]]
-
   assert_not_injected "$output"
+
+  run hook_argv "$notification" '{"message":"permission needed"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude needs you (${nasty})]"* ]]
+  assert_not_injected "$output"
+}
+
+# Docker refuses a hostname over 64 bytes outright, but takes one with a space
+# or an underscore, which then fails to resolve: every sudo complains. A name
+# from Coolify can also carry a trailing CR. The box still boots; the log says
+# why the name is wrong.
+@test "warns about a BOX_NAME that is not a valid hostname" {
+  local name
+  for name in 'Work box' $'work\r' "$(printf 'a%.0s' {1..64})"; do
+    boot_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e BOX_NAME="$name"
+    wait_ready
+
+    run box_logs
+    [[ "$output" == *"warning: BOX_NAME"*"is not a valid hostname"* ]]
+    cleanup_box
+  done
+}
+
+# Run without Compose, or by a host that drops `hostname:`, the titles would
+# name the box while the prompt still shows a container id.
+@test "warns when the hostname is not BOX_NAME" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e BOX_NAME=work
+  wait_ready
+
+  run box_logs
+  [[ "$output" == *"warning: the hostname is "*", not BOX_NAME (work)"* ]]
 }
 
 @test "never overwrites a settings.json from a persisted volume" {

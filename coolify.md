@@ -62,7 +62,7 @@ not deploy while it is empty; the rest are optional and start out blank.
 | `GIT_USER_NAME` | Recommended | Git author name. No default — unset means git refuses to commit until you set it on the box |
 | `GIT_USER_EMAIL` | Recommended | Git author email. Same as above |
 | `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access, either a raw PEM key or base64-encoded (`base64 < ~/.ssh/afkd-github \| tr -d '\n'`) — the entrypoint detects which. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
-| `BOX_NAME` | No | Which box this is, when you run [several](ssh.md#several-boxes). Becomes the hostname the prompt, tmux and herdr show (default `afkd`), and is appended to the ntfy titles: "Claude needs you (work)". Lowercase letters, digits and hyphens |
+| `BOX_NAME` | No | Which box this is, when you run [several](ssh.md#several-boxes). Becomes the hostname the prompt, tmux and herdr show, and is appended to the ntfy titles: "Claude needs you (work)". Default `afkd`. Up to 63 lowercase letters, digits and hyphens — a longer name stops the box from being created |
 
 `.env.example` at the repo root lists every variable the image reads, including
 the agent credentials and the optional ntfy notifications not shown here.

@@ -19,7 +19,9 @@ services:
     image: ghcr.io/maximn/afkd:${IMAGE_TAG:-main}
     restart: unless-stopped
     # Shown by the prompt, tmux and herdr. Docker's default is the container
-    # id, which changes every deploy and cannot tell two boxes apart.
+    # id, which changes every deploy and cannot tell two boxes apart. The same
+    # default as BOX_NAME below: Coolify fills a variable in from its default,
+    # and two different ones would leave which it picks to chance.
     hostname: ${BOX_NAME:-afkd}
     ports:
       - "${SSH_PORT:-2222}:22"
@@ -39,7 +41,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       NTFY_URL: ${NTFY_URL:-}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
-      BOX_NAME: ${BOX_NAME:-}
+      BOX_NAME: ${BOX_NAME:-afkd}
     volumes:
       - home:/home/dev
       - cache:/home/dev/.cache

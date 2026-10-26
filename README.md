@@ -56,7 +56,8 @@ Or without Compose:
 
 ```bash
 docker build -t afkd .
-docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
+docker run -d -p 2222:22 --ulimit nofile=65536:65536 --hostname afkd \
+  -e BOX_NAME=afkd \
   -e SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
   -v afkd-home:/home/dev \
   -v afkd-cache:/home/dev/.cache \
