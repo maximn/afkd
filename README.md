@@ -64,6 +64,11 @@ docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
   afkd
 ```
 
+A second box on the same host needs its own port and volumes, or it takes over
+the first one's: give Compose its own project name (`SSH_PORT=2223 docker
+compose -p afkd-work up -d`), or change the port and all three volume names in
+`docker run`. On Coolify, see [Running several boxes](coolify.md#running-several-boxes).
+
 You log in as `dev`, which owns all of `/home/dev` and has passwordless `sudo`.
 Home is persisted whole; the image keeps its own config under `/etc` and
 `/usr`, so a long-lived home still gets every image update. The system volume

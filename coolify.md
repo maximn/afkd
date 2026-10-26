@@ -71,6 +71,37 @@ the agent credentials and the optional ntfy notifications not shown here.
 SSH is published on host port `2222`. Set `SSH_PORT` to use another; it is
 read by the compose file, not by the image.
 
+## Running several boxes
+
+One box per account (personal, work, ...) is one Coolify app per account, each
+created from this repo as in [Setup](#setup-new-application). Coolify prefixes
+each app's volumes with its uuid, so homes, agent logins and SSH host keys stay
+apart without any extra setting. For each new app:
+
+1. **Give it its own `SSH_PORT`**, `2223` for the second box, and open that
+   port in the host's firewall as well.
+2. **Set its own environment:** `GIT_USER_NAME`, `GIT_USER_EMAIL`, `GH_TOKEN`
+   or `GITHUB_SSH_KEY` for that account, and its own ntfy topic in `NTFY_URL`.
+   A shared topic sends the same "Claude needs you" from both boxes, with
+   nothing saying which one is waiting.
+3. **Do the [once-per-deployment steps](#image-and-deploys) for it.** The ghcr
+   login is per host, so a box on the same host already has it. Turn off
+   Automatic Deployment in the new app too, and add its uuid to
+   `COOLIFY_APP_UUID`, comma-separated, or CI keeps deploying only the first
+   box and the new one stays on the image it was created with:
+   ```bash
+   gh variable set COOLIFY_APP_UUID --body <personal uuid>,<work uuid>
+   ```
+
+Boxes on one host share its memory and, since each runs as `dev` (uid 1000),
+one inotify watch budget. A second box makes the [swap and
+`max_user_watches`](#remote-ide-jetbrains) changes a prerequisite rather than a
+tuning step: without them, indexing on one box fails file watchers or gets
+the other OOM-killed.
+
+The laptop side, one ssh host entry per box, is in
+[ssh.md](ssh.md#several-boxes).
+
 ## Persistent Storage (Volumes)
 
 Declared in the compose file; Coolify names each one `<app uuid>_<name>`.
@@ -145,7 +176,7 @@ before `exec sshd` looking no different from a working one.
 
 ## Notes
 
-SSH host keys are persisted in the `system` volume. After a fresh setup, accept the key once. If you ever recreate that volume, clear the old key locally:
+SSH host keys are persisted in the `system` volume. After a fresh setup, accept the key once. If you ever recreate that volume, clear the old key locally, using that box's `SSH_PORT`:
 ```
 ssh-keygen -R '[<server-ip>]:2222'
 ```

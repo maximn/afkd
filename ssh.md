@@ -50,37 +50,45 @@ anytime with `afk`.
 
 ## Several boxes
 
-One box per account (personal, work, ...) keeps them apart: each is its own
-deployment of the image, with its own port, volumes, git identity, GitHub
-credentials and agent logins. Give each one a host entry:
+One box per account (personal, work, ...) keeps git identities, GitHub
+credentials and agent logins apart. Each is its own deployment with its own
+port; [Running several boxes](coolify.md#running-several-boxes) covers setting
+one up. On the laptop, give each box a host entry and keep the settings they
+share in one block:
 
 ```
-Host afk-personal
+Host afk-work
+    Port 2223
+
+Host afk afk-*
     HostName <server-ip>
     Port 2222
     User dev
     IdentityFile ~/.ssh/id_ed25519
     IdentitiesOnly yes
-
-Host afk-work
-    HostName <server-ip>
-    Port 2223
-    User dev
-    IdentityFile ~/.ssh/id_ed25519
-    IdentitiesOnly yes
 ```
+
+This replaces the `Host afk` entry above. ssh keeps the first value it finds
+for each setting, so the per-box blocks go first, and anything without one,
+`afk` and `afk-personal` included, lands on port 2222.
 
 `AFK_HOST` picks the box, once per command or behind an alias per box:
 
 ```bash
-AFK_HOST=afk-work afk herdr api
+AFK_HOST=afk-work afk ls
 alias afkw='AFK_HOST=afk-work afk'
 alias afkp='AFK_HOST=afk-personal afk'
 ```
 
+Sign a new box in through its own alias (`afkw`, then `claude login`); plain
+`afk` reaches the personal one. The aliases are for the laptop: on a box, `afk`
+ignores `AFK_HOST` and drives that box's own sessions, so `afkw` typed on the
+personal box opens the personal box.
+
 ## Troubleshooting
 
-If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" after recreating the system volume:
+If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" after recreating the system
+volume, clear the old key for that box's port (`2223` for `afk-work` above):
 ```
 ssh-keygen -R '[<server-ip>]:2222'
 ```
