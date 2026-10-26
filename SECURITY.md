@@ -48,6 +48,26 @@ Design decisions that follow from that:
 - **Agent permissions** are seeded in `~/.claude/settings.json` with a small
   deny list. That is a convenience, not a security boundary.
 
+## Verifying the image
+
+Every image CI publishes to `ghcr.io/maximn/afkd` is signed with
+[cosign](https://github.com/sigstore/cosign)'s keyless signing. The signature
+says the image was built by this repository's `ci.yml` on `main`:
+
+```bash
+cosign verify ghcr.io/maximn/afkd:main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/maximn/afkd/\.github/workflows/ci\.yml@refs/heads/main$'
+```
+
+Each architecture also carries a SLSA provenance attestation, recording the
+commit, the workflow run and the build args, and an SPDX SBOM:
+
+```bash
+docker buildx imagetools inspect ghcr.io/maximn/afkd:main --format '{{json .Provenance}}'
+docker buildx imagetools inspect ghcr.io/maximn/afkd:main --format '{{json .SBOM}}'
+```
+
 ## Scope
 
 Issues in this repository's `Dockerfile`, `entrypoint.sh` and helper scripts are
