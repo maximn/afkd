@@ -210,10 +210,10 @@ chmod 600 "$FORWARDED_ENV"
 # nothing in home is touched, and the token never lands on a volume. Readable
 # by root and the dev group alone, since it carries the token.
 #
-# These two strings are commands Claude Code hands to a shell, so the URL and
-# the token are shell-quoted with %q before being spliced in. They used to be
-# wrapped in hand-written quotes -- the token in "..." and the URL in '...' --
-# which holds only until a value contains the matching quote or, for the
+# These two strings are commands Claude Code hands to a shell, so the URL, the
+# token and the titles (which carry BOX_NAME) are shell-quoted with %q before
+# being spliced in. They used to be wrapped in hand-written quotes -- the token
+# in "..." and the URL in '...' -- which holds only until a value contains the matching quote or, for the
 # double-quoted one, anything the shell expands. All four of these ran as the
 # agent's own user when the hook fired -- the first two without even needing a
 # quote, since the shell expands those inside "...":
@@ -238,8 +238,12 @@ if [ -n "${NTFY_URL:-}" ]; then
     printf -v ntfy_header_q '%q' "Authorization: Bearer ${NTFY_TOKEN}"
     ntfy_auth="-H ${ntfy_header_q} "
   fi
-  needs_you="jq -r '.message // \"needs attention\"' | curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
-  finished="curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
+  # Several boxes can page the same phone; BOX_NAME says which one it was.
+  box_suffix="${BOX_NAME:+ (${BOX_NAME})}"
+  printf -v needs_you_title_q '%q' "Title: Claude needs you${box_suffix}"
+  printf -v finished_title_q '%q' "Title: Claude finished${box_suffix}"
+  needs_you="jq -r '.message // \"needs attention\"' | curl -s -o /dev/null ${ntfy_auth}-H ${needs_you_title_q} -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
+  finished="curl -s -o /dev/null ${ntfy_auth}-H ${finished_title_q} -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
 
   # A notification-config failure must never stop sshd from coming up.
   mkdir -p "$(dirname "$NTFY_SETTINGS")"

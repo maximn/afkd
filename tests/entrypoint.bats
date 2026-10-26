@@ -602,6 +602,66 @@ assert_not_injected() {
   assert_not_injected "$output"
 }
 
+# --- which box is paging -------------------------------------------------------
+#
+# One deployment per account sends to the same phone. BOX_NAME is what tells
+# the notifications apart; unset, the titles stay what they always were.
+
+# The Notification hook reads Claude's event from stdin, so it gets one. Run
+# after hook_argv, which installs the curl stub.
+notification_argv() {
+  local cmd
+  cmd="$(in_box jq -re '.hooks.Notification[0].hooks[0].command' "$NTFY_SETTINGS")"
+  docker exec -i "$BOX" env PATH=/tmp/stub:/usr/local/bin:/usr/bin:/bin \
+    bash -c "$cmd" <<<'{"message":"permission needed"}'
+}
+
+@test "notification titles name the box when BOX_NAME is set" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+    -e NTFY_URL=https://ntfy.example.com/claude -e BOX_NAME=work
+  wait_ready
+
+  run hook_argv "$(stop_hook_command)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude finished (work)]"* ]]
+
+  run notification_argv
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude needs you (work)]"* ]]
+}
+
+@test "notification titles are unchanged without BOX_NAME" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e NTFY_URL=https://ntfy.example.com/claude
+  wait_ready
+
+  run hook_argv "$(stop_hook_command)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude finished]"* ]]
+
+  run notification_argv
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude needs you]"* ]]
+}
+
+@test "a box name full of shell metacharacters cannot escape the hook command" {
+  local nasty='w`touch /tmp/pwned`$(touch /tmp/pwned)'"'"'; touch /tmp/pwned; id;'
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
+    -e NTFY_URL=https://ntfy.example.com/claude -e BOX_NAME="$nasty"
+  wait_ready
+
+  local cmd
+  cmd="$(stop_hook_command)"
+
+  run in_box bash -n -c "$cmd"
+  [ "$status" -eq 0 ]
+
+  run hook_argv "$cmd"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[Title: Claude finished (${nasty})]"* ]]
+
+  assert_not_injected "$output"
+}
+
 @test "never overwrites a settings.json from a persisted volume" {
   local vol
   vol="$(make_volume)"

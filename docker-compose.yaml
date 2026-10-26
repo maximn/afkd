@@ -18,6 +18,9 @@ services:
   afkd:
     image: ghcr.io/maximn/afkd:${IMAGE_TAG:-main}
     restart: unless-stopped
+    # Shown by the prompt, tmux and herdr. Docker's default is the container
+    # id, which changes every deploy and cannot tell two boxes apart.
+    hostname: ${BOX_NAME:-afkd}
     ports:
       - "${SSH_PORT:-2222}:22"
     # 1024 descriptors is fine for shell sessions but not for a JetBrains
@@ -36,6 +39,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       NTFY_URL: ${NTFY_URL:-}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
+      BOX_NAME: ${BOX_NAME:-}
     volumes:
       - home:/home/dev
       - cache:/home/dev/.cache

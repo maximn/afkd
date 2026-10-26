@@ -85,12 +85,27 @@ compose_config() {
   [ "$(jq -r '.services["afkd"].image' <<<"$output")" = ghcr.io/maximn/afkd:0123abc ]
 }
 
+# The prompt, tmux and herdr show the hostname. Docker's default is the
+# container id, which changes every deploy and says nothing about which of
+# several boxes this is.
+@test "names the host after BOX_NAME, afkd by default" {
+  run compose_config
+  [ "$(jq -r '.services["afkd"].hostname' <<<"$output")" = afkd ]
+
+  run compose SSH_PUBLIC_KEYS="$PUBKEY" BOX_NAME=work \
+    docker compose -f "$COMPOSE_FILE" config --format json
+  [ "$(jq -r '.services["afkd"].hostname' <<<"$output")" = work ]
+}
+
 @test "boots with its volumes, fd limit and port" {
   compose_up
   wait_ready
 
   run in_box sh -c 'ulimit -n'
   [ "$output" = "65536" ]
+
+  run in_box hostname
+  [ "$output" = afkd ]
 
   run docker inspect -f '{{range .Mounts}}{{.Type}} {{.Destination}}{{"\n"}}{{end}}' "$BOX"
   [ "$(sort <<<"$output" | sed '/^$/d')" = $'volume /home/dev\nvolume /home/dev/.cache\nvolume /var/lib/afkd' ]
