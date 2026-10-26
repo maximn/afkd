@@ -48,6 +48,43 @@ Inside a tmux session, run `claude` or `codex` to start coding.
 Detach from tmux with `Ctrl+b d` — the session keeps running. Reconnect
 anytime with `afk`.
 
+## Several boxes
+
+One box per account (personal, work, ...) keeps them apart: each is its own
+deployment of the image, with its own port, volumes, git identity, GitHub
+credentials and agent logins. Give each one a host entry:
+
+```
+Host afk-personal
+    HostName <server-ip>
+    Port 2222
+    User dev
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+
+Host afk-work
+    HostName <server-ip>
+    Port 2223
+    User dev
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+```
+
+`AFK_HOST` picks the box. Set it per project with [direnv](https://direnv.net),
+so a bare `afk` from a work checkout goes to the work box:
+
+```bash
+# ~/dev/work/.envrc
+export AFK_HOST=afk-work
+```
+
+Or once per command, or behind an alias:
+
+```bash
+AFK_HOST=afk-work afk herdr api
+alias afkw='AFK_HOST=afk-work afk'
+```
+
 ## Troubleshooting
 
 If you get "REMOTE HOST IDENTIFICATION HAS CHANGED" after recreating the system volume:
