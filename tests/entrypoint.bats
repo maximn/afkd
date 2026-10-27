@@ -544,7 +544,7 @@ JSON
 # environment, so it runs here without BOX_NAME: a hook that read it at
 # runtime instead of carrying it from boot would otherwise pass. The second
 # argument is the hook's stdin, Claude's event.
-hook_argv() {
+stub_curl() {
   docker exec -i "$BOX" bash -s <<'STUB'
 mkdir -p /tmp/stub
 cat > /tmp/stub/curl <<'CURL'
@@ -553,6 +553,10 @@ printf 'ARG[%s]\n' "$@"
 CURL
 chmod +x /tmp/stub/curl
 STUB
+}
+
+hook_argv() {
+  stub_curl
   docker exec -i "$BOX" env -u BOX_NAME \
     bash -c 'PATH=/tmp/stub:$PATH exec bash -c "$1"' _ "$1" <<<"${2:-}"
 }
@@ -705,4 +709,78 @@ assert_not_injected() {
 
   run in_box jq -re '.permissions.defaultMode' /home/dev/.claude/settings.json
   [ "$output" = "plan" ]
+}
+
+# --- Memory --------------------------------------------------------------------
+
+# Started in the background just before sshd, so it can trail the readiness
+# signal by a moment.
+earlyoom_pid() {
+  local i pid
+  for ((i = 0; i < 50; i++)); do
+    if pid="$(in_box pgrep -x earlyoom)"; then
+      echo "$pid"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "earlyoom is not running. logs:" >&2
+  box_logs >&2
+  return 1
+}
+
+# With no swap, a box that runs out of memory does not OOM-kill anything: it
+# thrashes, and sshd and herdr stop answering while both are still up. earlyoom
+# is what kills first. It runs as root, so it must not carry the agents' tokens
+# along -- it hands its environment to the script it runs after a kill.
+@test "runs earlyoom as root, holding none of the forwarded secrets" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e GH_TOKEN=gh_secret -e ANTHROPIC_API_KEY=sk_secret \
+    -e NTFY_URL=https://ntfy.example.com/claude -e NTFY_TOKEN=tk_test -e BOX_NAME=work
+  wait_ready
+
+  local pid
+  pid="$(earlyoom_pid)"
+
+  run in_box ps -o user= -p "$pid"
+  [ "$output" = "root" ]
+
+  # sshd is root's; the rest of the way in is dev's, and avoided by name.
+  run in_box sh -c "tr '\\0' ' ' < /proc/$pid/cmdline"
+  [[ "$output" == *"--ignore-root-user"* ]]
+  [[ "$output" == *"--avoid ^(sshd-session|herdr|tmux: server)\$"* ]]
+  [[ "$output" == *"-N /usr/local/libexec/afkd/oom-notify"* ]]
+
+  run in_box sh -c "tr '\\0' '\\n' < /proc/$pid/environ"
+  [[ "$output" == *"NTFY_TOKEN=tk_test"* ]]
+  [[ "$output" == *"BOX_NAME=work"* ]]
+  [[ "$output" != *"gh_secret"* ]]
+  [[ "$output" != *"sk_secret"* ]]
+}
+
+# Run the way earlyoom runs it: the environment the entrypoint started earlyoom
+# with, plus the EARLYOOM_* variables it sets for the kill.
+oom_notify() {
+  stub_curl
+  docker exec "$BOX" env -i PATH=/tmp/stub:/usr/bin:/bin "$@" /usr/local/libexec/afkd/oom-notify
+}
+
+# A process's command line can carry a token, and the ntfy server is a third
+# party, so the page names the process and nothing it was started with.
+@test "pages the phone after an earlyoom kill, and only when NTFY_URL is set" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  run oom_notify NTFY_URL=https://ntfy.example.com/claude NTFY_TOKEN=tk_test BOX_NAME=work \
+    EARLYOOM_NAME=claude EARLYOOM_PID=42 EARLYOOM_UID=1000 \
+    'EARLYOOM_CMDLINE=curl -H Authorization:cmdline_secret https://example.com'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ARG[https://ntfy.example.com/claude]"* ]]
+  [[ "$output" == *"ARG[Authorization: Bearer tk_test]"* ]]
+  [[ "$output" == *"ARG[Title: Out of memory (work)]"* ]]
+  [[ "$output" == *"ARG[stopped claude (pid 42) to keep the box reachable]"* ]]
+  [[ "$output" != *"cmdline_secret"* ]]
+
+  run oom_notify NTFY_URL= EARLYOOM_NAME=claude EARLYOOM_PID=42
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
