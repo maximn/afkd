@@ -201,6 +201,20 @@ FORWARDED_ENV="$RUNTIME_DIR/env.zsh"
 chown dev:dev "$FORWARDED_ENV"
 chmod 600 "$FORWARDED_ENV"
 
+# BOX_NAME is meant to be the hostname too -- docker-compose.yaml sets both --
+# but nothing checks it on the way in. Docker refuses a hostname over 64 bytes
+# but takes shorter ones that then fail to resolve: with a space in it, every
+# sudo complains. A host that runs the image without Compose never sets the
+# hostname at all, so the titles would name a box the prompt does not. Neither
+# stops a login, so both only warn.
+if [ -n "${BOX_NAME:-}" ]; then
+  if ! [[ "${BOX_NAME}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+    printf 'warning: BOX_NAME %q is not a valid hostname - use up to 63 lowercase letters, digits and hyphens.\n' "${BOX_NAME}" >&2
+  elif [ "$(hostname)" != "${BOX_NAME}" ]; then
+    echo "warning: the hostname is $(hostname), not BOX_NAME (${BOX_NAME}) - run it with --hostname ${BOX_NAME}, as docker-compose.yaml does." >&2
+  fi
+fi
+
 # Agent lifecycle notifications. Rebuilt on every boot from NTFY_URL, so the
 # wiring stays declarative. This is what lets a detached session page a phone
 # instead of needing someone attached.
@@ -210,13 +224,14 @@ chmod 600 "$FORWARDED_ENV"
 # nothing in home is touched, and the token never lands on a volume. Readable
 # by root and the dev group alone, since it carries the token.
 #
-# These two strings are commands Claude Code hands to a shell, so the URL and
-# the token are shell-quoted with %q before being spliced in. They used to be
-# wrapped in hand-written quotes -- the token in "..." and the URL in '...' --
-# which holds only until a value contains the matching quote or, for the
-# double-quoted one, anything the shell expands. All four of these ran as the
-# agent's own user when the hook fired -- the first two without even needing a
-# quote, since the shell expands those inside "...":
+# These two strings are commands Claude Code hands to a shell, so every
+# argument that comes from the environment -- the URL, the token, the titles
+# carrying BOX_NAME -- goes through one %q pass over the whole curl argv rather
+# than being spliced in by hand. Hand-written quotes -- the token in "..." and
+# the URL in '...' -- held only until a value contained the matching quote or,
+# for the double-quoted one, anything the shell expands. All four of these ran
+# as the agent's own user when the hook fired -- the first two without even
+# needing a quote, since the shell expands those inside "...":
 #
 #   NTFY_TOKEN   tk`cmd`   |   tk$(cmd)   |   tk"; cmd;
 #   NTFY_URL     https://host/topic'; cmd;
@@ -232,14 +247,20 @@ chmod 600 "$FORWARDED_ENV"
 # could write that JSON and steer an agent with no one attached.
 NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
 if [ -n "${NTFY_URL:-}" ]; then
-  printf -v ntfy_url_q '%q' "${NTFY_URL}"
-  ntfy_auth=""
+  ntfy_auth=()
   if [ -n "${NTFY_TOKEN:-}" ]; then
-    printf -v ntfy_header_q '%q' "Authorization: Bearer ${NTFY_TOKEN}"
-    ntfy_auth="-H ${ntfy_header_q} "
+    ntfy_auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
   fi
-  needs_you="jq -r '.message // \"needs attention\"' | curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
-  finished="curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
+  # Several boxes can page the same phone; BOX_NAME says which one it was.
+  box_suffix="${BOX_NAME:+ (${BOX_NAME})}"
+  printf -v needs_you '%q ' curl -s -o /dev/null "${ntfy_auth[@]}" \
+    -H "Title: Claude needs you${box_suffix}" -H 'Priority: high' -H 'Tags: warning' \
+    --data-binary @- "${NTFY_URL}"
+  needs_you="jq -r '.message // \"needs attention\"' | ${needs_you% }"
+  printf -v finished '%q ' curl -s -o /dev/null "${ntfy_auth[@]}" \
+    -H "Title: Claude finished${box_suffix}" -H 'Tags: white_check_mark' \
+    -d 'turn complete' "${NTFY_URL}"
+  finished="${finished% }"
 
   # A notification-config failure must never stop sshd from coming up.
   mkdir -p "$(dirname "$NTFY_SETTINGS")"

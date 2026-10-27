@@ -62,6 +62,7 @@ not deploy while it is empty; the rest are optional and start out blank.
 | `GIT_USER_NAME` | Recommended | Git author name. No default — unset means git refuses to commit until you set it on the box |
 | `GIT_USER_EMAIL` | Recommended | Git author email. Same as above |
 | `GITHUB_SSH_KEY` | No | Private SSH key for GitHub access, either a raw PEM key or base64-encoded (`base64 < ~/.ssh/afkd-github \| tr -d '\n'`) — the entrypoint detects which. Needed because some GitHub orgs restrict fine-grained PATs (e.g. max token lifetime), so `GH_TOKEN` alone can't clone their repos. Add the matching public key to [GitHub SSH keys](https://github.com/settings/ssh/new) |
+| `BOX_NAME` | No | Which box this is, when you run [several](ssh.md#several-boxes). Becomes the hostname the prompt, tmux and herdr show, and is appended to the ntfy titles: "Claude needs you (work)". Default `afkd`. Up to 63 lowercase letters, digits and hyphens — a longer name stops the box from being created |
 
 `.env.example` at the repo root lists every variable the image reads, including
 the agent credentials and the optional ntfy notifications not shown here.
@@ -80,10 +81,11 @@ apart without any extra setting. For each new app:
 
 1. **Give it its own `SSH_PORT`**, `2223` for the second box, and open that
    port in the host's firewall as well.
-2. **Set its own environment:** `GIT_USER_NAME`, `GIT_USER_EMAIL`, `GH_TOKEN`
-   or `GITHUB_SSH_KEY` for that account, and its own ntfy topic in `NTFY_URL`.
-   A shared topic sends the same "Claude needs you" from both boxes, with
-   nothing saying which one is waiting.
+2. **Set its own environment:** `BOX_NAME` (`work`), and `GIT_USER_NAME`,
+   `GIT_USER_EMAIL`, `GH_TOKEN` or `GITHUB_SSH_KEY` for that account.
+   `BOX_NAME` becomes the hostname, so the prompt says which box you are on,
+   and goes into the ntfy titles, so both boxes can share one topic:
+   "Claude needs you (work)".
 3. **Do the [once-per-deployment steps](#image-and-deploys) for it.** The ghcr
    login is per host, so a box on the same host already has it. Turn off
    Automatic Deployment in the new app too, and add its uuid to
