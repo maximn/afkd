@@ -151,12 +151,22 @@ if [ -n "${GITHUB_SSH_KEY:-}" ]; then
 fi
 
 if [ "${gh_key_ok:-0}" = "1" ]; then
-  # Unguarded this is fatal under `set -e`: ssh-keyscan exits 1 when github.com
-  # does not resolve, which happens on any boot that wins a race with the
-  # network. Losing known_hosts costs you git-over-ssh; aborting here costs you
-  # sshd, and with it every way back into the box.
-  ssh-keyscan -t ed25519 github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null \
-    || echo "warning: could not reach github.com to record its host key; git over ssh may prompt" >&2
+  # GitHub's published host keys (api.github.com/meta), not an ssh-keyscan at
+  # boot. A keyscan trusts whatever answers as github.com when the box starts
+  # -- a hostile resolver or a hop on the path gets its own key recorded, and
+  # git over ssh then talks to it without a prompt -- and it appended a fresh
+  # line on every boot. Pinned keys need no network either, so a boot that
+  # races DNS still gets a working known_hosts. If GitHub ever rotates, this
+  # list changes with a commit, the way their announcement says to.
+  # ED25519 fingerprint SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
+  while read -r key; do
+    grep -qxF "github.com ${key}" /etc/ssh/ssh_known_hosts 2>/dev/null \
+      || echo "github.com ${key}" >> /etc/ssh/ssh_known_hosts
+  done <<'GITHUB_HOST_KEYS'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+GITHUB_HOST_KEYS
   cat > /etc/ssh/ssh_config.d/50-github.conf <<SSHCFG
 Host github.com
   IdentityFile ${GITHUB_KEY}
@@ -213,6 +223,13 @@ chmod 600 "$FORWARDED_ENV"
 #
 # jq's --arg does the JSON quoting, which is a different layer and never
 # covered any of this.
+#
+# curl's -o /dev/null is not tidiness. A command hook's stdout is Claude Code's
+# control channel: JSON there is read as the hook's decision, and a Stop hook
+# that prints {"decision":"block","reason":"..."} keeps the turn going with the
+# reason handed to the model as an instruction. Without -o, whoever answers at
+# NTFY_URL -- the ntfy server, or anything on the path to an http:// one --
+# could write that JSON and steer an agent with no one attached.
 NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
 if [ -n "${NTFY_URL:-}" ]; then
   printf -v ntfy_url_q '%q' "${NTFY_URL}"
@@ -221,8 +238,8 @@ if [ -n "${NTFY_URL:-}" ]; then
     printf -v ntfy_header_q '%q' "Authorization: Bearer ${NTFY_TOKEN}"
     ntfy_auth="-H ${ntfy_header_q} "
   fi
-  needs_you="jq -r '.message // \"needs attention\"' | curl -s ${ntfy_auth}-H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
-  finished="curl -s ${ntfy_auth}-H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
+  needs_you="jq -r '.message // \"needs attention\"' | curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude needs you' -H 'Priority: high' -H 'Tags: warning' --data-binary @- ${ntfy_url_q}"
+  finished="curl -s -o /dev/null ${ntfy_auth}-H 'Title: Claude finished' -H 'Tags: white_check_mark' -d 'turn complete' ${ntfy_url_q}"
 
   # A notification-config failure must never stop sshd from coming up.
   mkdir -p "$(dirname "$NTFY_SETTINGS")"
