@@ -105,12 +105,15 @@ A host with no swap is still worth fixing, since idle agents are mostly
 memory that could sit in swap instead. On the host itself, not in the box:
 
 ```bash
-sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-With swap, earlyoom waits until swap is nearly full as well before it kills.
+With swap, earlyoom waits until swap is nearly full as well before it kills,
+and the box can be slow until then. Keep the swap small so that wait is short:
+2 GB holds what idle agents leave untouched, and fills quickly when the agents
+together really need more memory than the host has.
 
 ## Connect
 
