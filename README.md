@@ -56,7 +56,8 @@ Or without Compose:
 
 ```bash
 docker build -t afkd .
-docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
+docker run -d -p 2222:22 --ulimit nofile=65536:65536 --hostname afkd \
+  -e BOX_NAME=afkd \
   -e SSH_PUBLIC_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
   -v afkd-home:/home/dev \
   -v afkd-cache:/home/dev/.cache \
@@ -65,9 +66,9 @@ docker run -d -p 2222:22 --ulimit nofile=65536:65536 \
 ```
 
 A second box on the same host needs its own port and volumes, or it takes over
-the first one's: give Compose its own project name (`SSH_PORT=2223 docker
-compose -p afkd-work up -d`), or change the port and all three volume names in
-`docker run`. On Coolify, see [Running several boxes](coolify.md#running-several-boxes).
+the first one's: give Compose its own project name (`SSH_PORT=2223 BOX_NAME=work
+docker compose -p afkd-work up -d`), or change the port, the name and all three
+volume names in `docker run`. On Coolify, see [Running several boxes](coolify.md#running-several-boxes).
 
 You log in as `dev`, which owns all of `/home/dev` and has passwordless `sudo`.
 Home is persisted whole; the image keeps its own config under `/etc` and
