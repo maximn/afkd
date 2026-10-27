@@ -10,8 +10,7 @@ FROM debian:trixie-20261005@sha256:913f6706df59a68922d1dd08f78c2476560a8d3678972
 #
 # pipefail only covers pipelines. `sh -c "$(curl ...)"` is a command
 # substitution: a failed download is substituted in as the empty string and
-# `sh -c ""` exits 0, which is why the starship install below writes the
-# script to a file and runs that instead.
+# `sh -c ""` exits 0, so nothing below runs a fetched script that way.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV LANG=C.UTF-8
@@ -222,11 +221,29 @@ RUN case "${TARGETARCH}" in \
     && curl -fsSL "https://github.com/charmbracelet/glow/releases/download/v${GLOW_VERSION}/glow_${GLOW_VERSION}_Linux_${garch}.tar.gz" \
       | tar -xz -C /usr/local/bin --strip-components=1 "glow_${GLOW_VERSION}_Linux_${garch}/glow"
 
+# The release asset, not starship.rs/install.sh. The installer was fetched
+# unversioned from a different host than the release and run as root, so the
+# pin covered only what it was asked to install, never the script doing the
+# installing -- and check-pins passed it because the block named a VERSION.
+# The checksum is the per-asset .sha256 from the same release, the bar the
+# Codex install below is held to; an empty one is refused rather than handed
+# to `sha256sum -c`.
 # renovate: datasource=github-releases depName=starship/starship extractVersion=^v(?<version>.+)$
 ARG STARSHIP_VERSION=1.27.0
-RUN curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh \
-    && sh /tmp/starship-install.sh --yes --version "v${STARSHIP_VERSION}" \
-    && rm /tmp/starship-install.sh
+RUN case "${TARGETARCH}" in \
+      amd64) triple=x86_64-unknown-linux-musl ;; \
+      arm64) triple=aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac \
+    && release="https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}" \
+    && asset="starship-${triple}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
+    && want="$(curl -fsSL "${release}/${asset}.sha256" | tr -d '[:space:]')" \
+    && [ -n "${want}" ] \
+    && echo "${want}  ${tmp}/${asset}" | sha256sum -c --quiet - \
+    && tar -xzf "${tmp}/${asset}" -C /usr/local/bin starship \
+    && rm -rf "${tmp}"
 
 # renovate: datasource=github-releases depName=abhinav/git-spice extractVersion=^v(?<version>.+)$
 ARG GIT_SPICE_VERSION=0.33.0

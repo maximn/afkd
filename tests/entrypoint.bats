@@ -307,16 +307,17 @@ assert_github_key_usable() {
 }
 
 @test "boots with a usable GitHub key even with no network" {
-  # ssh-keyscan exits non-zero when github.com does not resolve, which is any
-  # boot that races the network -- a Coolify restart ahead of its DNS, an
-  # egress firewall, a flaky resolver. Unguarded under `set -e` that aborted
-  # the entrypoint before `exec sshd`, leaving a container nobody could log in
-  # to and fix. GITHUB_SSH_KEY has to be set or the keyscan is never reached.
+  # Boots race the network -- a Coolify restart ahead of its DNS, an egress
+  # firewall, a flaky resolver. GitHub's host keys used to come from an
+  # ssh-keyscan here, which under `set -e` aborted the entrypoint before
+  # `exec sshd` and left a container nobody could log in to and fix. They are
+  # pinned now, so a boot with no network still records them.
+  # GITHUB_SSH_KEY has to be set or the GitHub setup is never reached.
   start_box --network none -e SSH_PUBLIC_KEYS="$PUBKEY" -e GITHUB_SSH_KEY="$PRIVKEY"
   wait_ready
 
-  run box_logs
-  [[ "$output" == *"could not reach github.com"* ]]
+  run in_box ssh-keygen -lf /etc/ssh/ssh_known_hosts
+  [[ "$output" == *"SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU github.com (ED25519)"* ]]
 
   # Everything that does not need the network still has to have happened.
   run in_box stat -c '%U %a' "$GITHUB_KEY"
@@ -430,6 +431,11 @@ NTFY_SETTINGS=/etc/claude-code/managed-settings.d/50-ntfy.json
   run in_box jq -re '.hooks.Stop[0].hooks[0].command' "$NTFY_SETTINGS"
   [ "$status" -eq 0 ]
   [[ "$output" == *"turn complete"* ]]
+
+  # A hook's stdout is read by Claude Code as its decision, so the ntfy
+  # server's response must never reach it.
+  run in_box jq -r '.hooks[][].hooks[].command' "$NTFY_SETTINGS"
+  [ "$(grep -c -- '-o /dev/null' <<<"$output")" -eq 2 ]
 
   # It holds a bearer token, so it is readable by root and by the group of the
   # one user Claude Code runs as, and nobody else.
