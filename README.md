@@ -25,6 +25,7 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 | Editing | `vim` (also `vi` and `editor`, set as `EDITOR`/`VISUAL`), man pages |
 | Building | `gcc`/`g++`, `make`, `pkg-config`, OpenSSL, zlib and libffi headers — enough for node-gyp, `openssl-sys` and most Python sdists |
 | Diagnostics | `dig`, `ping`, `nc`, `lsof`, `strace`, `htop` |
+| Memory | [earlyoom](https://github.com/rfjakob/earlyoom), so a box short of memory kills one process instead of hanging; see [Memory](#memory) |
 | Reading | [glow](https://github.com/charmbracelet/glow) (Markdown in the terminal) |
 | Access | `openssh-server` (key auth only), `xterm-ghostty` terminfo |
 
@@ -81,6 +82,35 @@ password auth is disabled, so no keys would mean a container that passes its
 healthcheck while being impossible to log into. The image carries that
 healthcheck itself (`pgrep -x sshd`), so a host that reads one from the image
 gets it with no configuration.
+
+### Memory
+
+Every agent costs a few hundred MB idle, and much more while it runs a build
+or a test suite. When several of them together ask for more than the host
+has, and the host has no swap, the kernel does not kill anything: it thrashes,
+and sshd and herdr stop answering while both are still running, until the
+machine is restarted. Two things in the image prevent that:
+
+- `earlyoom` runs as root and, below 10% available memory, kills the process
+  with the highest OOM score: usually the build that blew up, otherwise an
+  agent. With `NTFY_URL` set, the kill pages you ("Out of memory"). It never
+  kills root's processes, and it kills herdr, tmux and your SSH session only
+  as a last resort.
+- Shells in a herdr or tmux pane raise their own `oom_score_adj` to 500 and
+  their nice level to 10, and everything started in a pane inherits both. So
+  agents get killed before the way back in does, and they wait for the CPU
+  behind it.
+
+A host with no swap is still worth fixing, since idle agents are mostly
+memory that could sit in swap instead. On the host itself, not in the box:
+
+```bash
+sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+With swap, earlyoom waits until swap is nearly full as well before it kills.
 
 ## Connect
 

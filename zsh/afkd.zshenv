@@ -29,6 +29,19 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # VISUAL/EDITOR themselves and have no fallback of their own.
 export EDITOR=vim VISUAL=vim
 
+# Inside a herdr or tmux pane, this shell and everything it starts -- agents,
+# and the builds and test runs they kick off -- go to the back of the queue:
+# first in line for an OOM killer (the kernel's, and the earlyoom the
+# entrypoint runs), and behind sshd and herdr for the CPU, so the way back in
+# stays responsive while agents saturate the box. The first shell in a pane
+# does it and everything under it inherits it, so an agent's own subshells
+# skip the renice. Raising both is something any process may do to itself;
+# only lowering them takes root.
+if [[ -n ${HERDR_ENV:-}${TMUX:-} && $(</proc/$$/oom_score_adj) -lt 500 ]]; then
+  print 500 >| /proc/$$/oom_score_adj
+  renice -n 10 -p $$ >/dev/null
+fi 2>/dev/null
+
 # API keys and tokens forwarded from the container's environment, rebuilt by
 # the entrypoint on every boot. sshd starts each session with a clean
 # environment, so this is how they reach an ssh command or an agent at all.

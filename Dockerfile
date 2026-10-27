@@ -88,6 +88,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     htop \
     procps \
+# Kills the biggest process before memory runs out rather than after, which
+# on a box with no swap is the difference between losing one agent and
+# losing the box. The entrypoint starts it; see the comment there.
+    earlyoom \
 # The login user is not root, and still administers its own box.
     sudo \
 # The workstation layer -- what a person or an agent reaches for on a box they
@@ -422,7 +426,9 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/bin/zsh dev \
 
 COPY home-init.sh /usr/local/libexec/afkd/home-init
 COPY afkd-migrate.sh /usr/local/bin/afkd-migrate
-RUN chmod 755 /usr/local/libexec/afkd/home-init /usr/local/bin/afkd-migrate
+COPY oom-notify.sh /usr/local/libexec/afkd/oom-notify
+RUN chmod 755 /usr/local/libexec/afkd/home-init /usr/local/bin/afkd-migrate \
+      /usr/local/libexec/afkd/oom-notify
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

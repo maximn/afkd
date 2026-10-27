@@ -275,6 +275,38 @@ if [ -n "${NTFY_URL:-}" ]; then
   { chown root:dev "$NTFY_SETTINGS" && chmod 640 "$NTFY_SETTINGS"; } 2>/dev/null || true
 fi
 
+# Memory. A few agents running builds or test suites at once can ask for more
+# than the host has, and with no swap the kernel then kills nothing: it drops
+# the code of every running program instead and reads it straight back from
+# disk, which counts as progress, so its own OOM killer never fires. A 4 GB
+# box sat like that for hours -- CPUs pinned, the disk reading flat out, sshd
+# and herdr both up and neither able to answer -- until it was power-cycled.
+#
+# earlyoom acts before that point: below 10% of memory available it sends the
+# process with the highest oom_score a SIGTERM, and below 5% a SIGKILL -- on
+# a host with swap, only once that is nearly full as well. That loses one
+# agent's turn rather than the whole box.
+#
+# Never root's processes, so never sshd itself. The dev-owned ones that are
+# the way back in -- the session sshd runs for a login, herdr, the tmux
+# server -- are picked only once nothing else is left; the panes make
+# themselves the first choice in afkd.zshenv.
+#
+# Started with an empty environment plus what the notifier needs: it would
+# otherwise hold every token forwarded above and pass them all to the script
+# it runs after a kill. It reads /proc/meminfo, which in a container is the
+# host's -- the right total for docker-compose.yaml, which sets no memory
+# limit. -r 3600 leaves an hourly memory line in the container log, enough
+# to see what a box was doing before it went quiet.
+#
+# In the background, so it cannot hold up sshd; once sshd is exec'd below,
+# earlyoom is its child, and an earlyoom that exits is reaped by it.
+env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+  NTFY_URL="${NTFY_URL:-}" NTFY_TOKEN="${NTFY_TOKEN:-}" BOX_NAME="${BOX_NAME:-}" \
+  earlyoom -r 3600 --ignore-root-user \
+    --avoid '^(sshd-session|herdr|tmux: server)$' \
+    -N /usr/local/libexec/afkd/oom-notify &
+
 # nofile is raised by docker-compose.yaml, which a host that runs the image
 # some other way -- a bare `docker run`, an older Dockerfile-based Coolify app --
 # does not read. A JetBrains backend then hits EMFILE partway through indexing

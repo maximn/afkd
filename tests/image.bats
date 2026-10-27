@@ -476,6 +476,23 @@ interactive() {
   [[ "$output" == *"git status"* ]]
 }
 
+# When the box runs short, an agent in a pane -- and the builds it starts --
+# is what gets killed, and what waits for the CPU; herdr and sshd, the way back
+# in, are not. The probe is a child of the shell, so it shows what the shell's
+# children inherit. A shell outside any pane is left alone.
+@test "a shell in a herdr or tmux pane deprioritizes itself and its children" {
+  local probe='cat /proc/self/oom_score_adj; ps -o ni= -p $$ | tr -d " "'
+
+  run as_dev env HERDR_ENV=1 zsh -c "$probe"
+  [ "$output" = $'500\n10' ]
+
+  run as_dev env TMUX=/tmp/tmux-1000/default,1,0 zsh -c "$probe"
+  [ "$output" = $'500\n10' ]
+
+  run as_dev zsh -c "$probe"
+  [ "$output" = $'0\n0' ]
+}
+
 # The g* shortcuts come from the oh-my-zsh git plugin, vendored at a pinned
 # commit. There is no --version to check, so the pin is asserted structurally:
 # a 40-char commit rather than a branch, and both files actually on disk. The
