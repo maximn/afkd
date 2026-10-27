@@ -442,6 +442,10 @@ jobs:
   #
   # The token is the production environment's, not the repository's, and needs
   # only Coolify's `deploy` permission.
+  #
+  # Every app tagged `afkd` in Coolify is deployed, one per box, so adding a box
+  # needs no change here. With no app tagged, Coolify answers 404 and the
+  # job fails.
   deploy:
     name: Deploy
     needs: publish-tags
@@ -454,12 +458,11 @@ jobs:
       - name: Ask Coolify to deploy
         env:
           COOLIFY_URL: ${{ vars.COOLIFY_URL }}
-          COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         # POST: Coolify answers a GET here with a 400 that only says the
         # endpoint has moved to POST, and deploys nothing.
         run: |
-          curl --fail-with-body --silent --show-error \
+          curl --fail-with-body --silent --show-error --max-time 60 \
             --header "Authorization: Bearer $COOLIFY_TOKEN" \
-            --data-urlencode "uuid=$COOLIFY_APP_UUID" \
+            --data-urlencode "tag=afkd" \
             "$COOLIFY_URL/api/v1/deploy"

@@ -40,11 +40,13 @@ Once per deployment:
    an API token with only the `deploy` permission, and in the GitHub repo:
    ```bash
    gh variable set COOLIFY_URL --body https://<your coolify>
-   gh variable set COOLIFY_APP_UUID --body <app uuid>
    gh secret set COOLIFY_TOKEN --env production
    ```
    Without `COOLIFY_URL` the deploy job is skipped and images are still
    published, so deploy from Coolify by hand.
+4. **Tag the app `afkd`** under its Tags. CI deploys every app with
+   that tag, so with [several boxes](#running-several-boxes) it reaches
+   each one, and an app without it is never deployed by CI.
 
 **Rolling back:** set `IMAGE_TAG` to the sha of a commit that published a good
 build in Coolify's Environment Variables and redeploy. Clear it to follow `main`
@@ -87,19 +89,23 @@ apart without any extra setting. For each new app:
    and goes into the ntfy titles, so both boxes can share one topic:
    "Claude needs you (work)".
 3. **Do the [once-per-deployment steps](#image-and-deploys) for it.** The ghcr
-   login is per host, so a box on the same host already has it. Turn off
-   Automatic Deployment in the new app too, and add its uuid to
-   `COOLIFY_APP_UUID`, comma-separated, or CI keeps deploying only the first
-   box and the new one stays on the image it was created with:
-   ```bash
-   gh variable set COOLIFY_APP_UUID --body <personal uuid>,<work uuid>
-   ```
+   login is per host, so a box on the same host already has it, and nothing
+   changes on the GitHub side. Turn off Automatic Deployment in the new app,
+   since Coolify turns it on for every new app, and tag it `afkd`, or CI
+   never deploys it and it stays on the image it was created with. The
+   deploy job's log lists the deployment Coolify queued for each app; one
+   that fails later, at the image pull for instance, shows only in Coolify.
 
 Boxes on one host share its memory and, since each runs as `dev` (uid 1000),
 one inotify watch budget. A second box makes the [swap and
 `max_user_watches`](#remote-ide-jetbrains) changes a prerequisite rather than a
 tuning step: without them, indexing on one box fails file watchers or gets
 the other OOM-killed.
+
+**Deploys restart every box.** A merge to `main` that changes the image
+redeploys each app tagged `afkd`, ending the tmux and herdr sessions running
+in it. To keep one box out of that, remove its tag and deploy it by hand.
+Pinning `IMAGE_TAG` is not enough: the box still restarts, on the same image.
 
 The laptop side, one ssh host entry per box, is in
 [ssh.md](ssh.md#several-boxes).
