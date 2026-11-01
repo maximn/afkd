@@ -307,6 +307,19 @@ env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     --avoid '^(sshd-session|herdr|tmux: server)$' \
     -N /usr/local/libexec/afkd/oom-notify &
 
+# Dotfiles catch-up: one chezmoi update per boot, for whatever was pushed while
+# the box was down. A no-op until the user has run `chezmoi init`.
+#
+# As dev, since everything it writes is dev's home, and with an empty
+# environment plus what it needs, as for earlyoom above: the tokens a session
+# gets, it reads through zsh the way a session does, rather than inheriting
+# every variable the container was given. In the background, so a slow apply
+# cannot hold up sshd.
+runuser -u dev -- env -i PATH=/usr/local/bin:/usr/bin:/bin \
+  HOME=/home/dev USER=dev LOGNAME=dev SHELL=/usr/bin/zsh \
+  NTFY_URL="${NTFY_URL:-}" NTFY_TOKEN="${NTFY_TOKEN:-}" BOX_NAME="${BOX_NAME:-}" \
+  /usr/local/libexec/afkd/dotfiles-sync &
+
 # nofile is raised by docker-compose.yaml, which a host that runs the image
 # some other way -- a bare `docker run`, an older Dockerfile-based Coolify app --
 # does not read. A JetBrains backend then hits EMFILE partway through indexing
