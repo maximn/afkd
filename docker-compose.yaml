@@ -42,7 +42,6 @@ services:
       NTFY_URL: ${NTFY_URL:-}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
       BOX_NAME: ${BOX_NAME:-afkd}
-      DOTFILES_SYNC_INTERVAL: ${DOTFILES_SYNC_INTERVAL:-}
     volumes:
       - home:/home/dev
       - cache:/home/dev/.cache

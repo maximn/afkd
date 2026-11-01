@@ -26,7 +26,7 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 | Building | `gcc`/`g++`, `make`, `pkg-config`, OpenSSL, zlib and libffi headers — enough for node-gyp, `openssl-sys` and most Python sdists |
 | Diagnostics | `dig`, `ping`, `nc`, `lsof`, `strace`, `htop` |
 | Memory | [earlyoom](https://github.com/rfjakob/earlyoom), so a box short of memory kills one process instead of hanging; see [Memory](#memory) |
-| Dotfiles | [chezmoi](https://www.chezmoi.io), kept in sync with your dotfiles repo; see [Dotfiles](#dotfiles) |
+| Dotfiles | [chezmoi](https://www.chezmoi.io), caught up with your dotfiles repo at boot; see [Dotfiles](#dotfiles) |
 | Reading | [glow](https://github.com/charmbracelet/glow) (Markdown in the terminal) |
 | Access | `openssh-server` (key auth only), `xterm-ghostty` terminfo |
 
@@ -127,15 +127,24 @@ chezmoi init --apply <your-github-user>   # clones github.com/<you>/dotfiles
 
 A private repo clones with `GH_TOKEN`, given read access to it.
 
-From then on the box pulls and applies the repo every hour, so a change you
-push from your laptop reaches it without a login. Set `DOTFILES_SYNC_INTERVAL`
-to change how often, or `0` to turn it off.
+From then on, every boot pulls and applies the repo, so a redeploy or a restart
+catches up with whatever you pushed while the box was down. There is no timer.
+To reach a running box as soon as you push, run this from your laptop, for
+example from a chezmoi `post` hook on `add`, `edit` and `re-add`:
 
-- A file you edited on the box since the last apply is left alone, the rest
-  still applies, and with `NTFY_URL` set you get one page ("Dotfiles sync
-  failed"). `chezmoi status` and `chezmoi diff` show what is waiting;
+```bash
+ssh -n <box> 'zsh -c "chezmoi update --init --no-tty --keep-going --error-on-conflict"'
+```
+
+`zsh -c` gives it what a session gets, including `GH_TOKEN`. chezmoi's auto-push
+has landed by the time a `post` hook runs, but a failing hook makes the chezmoi
+command exit non-zero, so have the hook warn rather than fail.
+
+- A file you edited on the box since the last apply is left alone and the rest
+  still applies. `chezmoi status` and `chezmoi diff` show what is waiting;
   `chezmoi re-add` keeps your edit, `chezmoi apply --force` takes the repo's.
-- Output from each sync goes to the container log, prefixed `dotfiles-sync:`.
+- If the pass at boot fails and `NTFY_URL` is set, you get a page ("Dotfiles sync
+  failed"). Its output goes to the container log, prefixed `dotfiles-sync:`.
 
 ## Connect
 

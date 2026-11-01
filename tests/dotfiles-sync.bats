@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 #
-# dotfiles-sync: the background loop that keeps a chezmoi repo in home applied.
-# Each box gets a home seeded with a chezmoi source cloned from a bare repo in
-# that same home, so a push to the bare repo is what a push from a laptop is.
+# dotfiles-sync: the pass at boot that catches a chezmoi repo in home up, and
+# the ssh update a laptop runs while the box is up. Each box gets a home seeded
+# with a chezmoi source cloned from a bare repo in that same home, so a push to
+# the bare repo is what a push from a laptop is.
 
 load helpers
 
@@ -16,7 +17,8 @@ teardown() {
 
 # The remote is ~/remote.git and the working copy that pushes to it ~/work;
 # chezmoi's own clone is the source directory. The run_after script records
-# the environment chezmoi hands the repo's scripts.
+# the environment chezmoi hands the repo's scripts, and the seed removes what
+# chezmoi init left there, so a record found later came from the box.
 seed_dotfiles() {
   HOME_VOL="$(make_volume)"
   seed_home "$HOME_VOL" '
@@ -27,13 +29,18 @@ seed_dotfiles() {
     cd ~/work
     echo v1 > dot_synced
     echo v1 > dot_edited
-    printf "#!/bin/sh\nenv > \"\$HOME/.apply-env\"\n" > run_after_record-env.sh
+    printf "#!/bin/sh\nenv > \"\$HOME/.apply-env.tmp\" && mv \"\$HOME/.apply-env.tmp\" \"\$HOME/.apply-env\"\n" > run_after_record-env.sh
     git add -A && git commit -qm init && git push -q origin HEAD
-    chezmoi init --apply file:///home/dev/remote.git'
+    chezmoi init --apply file:///home/dev/remote.git
+    rm ~/.apply-env'
 }
 
-push_change() {
-  as_dev bash -c "cd ~/work && $1 && git commit -qam change && git push -q origin HEAD"
+push_while_down() {
+  seed_home "$HOME_VOL" "set -e; cd ~/work; $1; git add -A; git commit -qm change; git push -q origin HEAD"
+}
+
+push_while_up() {
+  as_dev bash -c "set -e; cd ~/work; $1; git add -A; git commit -qm change; git push -q origin HEAD"
 }
 
 wait_for_content() {
@@ -47,25 +54,70 @@ wait_for_content() {
   return 1
 }
 
+wait_for_file() {
+  local i
+  for ((i = 0; i < 60; i++)); do
+    as_dev test -e "$1" && return 0
+    sleep 0.5
+  done
+  echo "$1 never appeared. logs:" >&2
+  box_logs >&2
+  return 1
+}
+
 sync_running() {
   in_box pgrep -u dev -f /usr/local/libexec/afkd/dotfiles-sync >/dev/null
 }
 
-@test "applies a change pushed to the dotfiles repo" {
-  seed_dotfiles
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=1
-  wait_ready
-
-  push_change 'echo v2 > dot_synced'
-  wait_for_content /home/dev/.synced v2
+wait_for_sync_to_exit() {
+  local i
+  for ((i = 0; i < 60; i++)); do
+    sync_running || return 0
+    sleep 0.5
+  done
+  echo "dotfiles-sync is still running" >&2
+  return 1
 }
 
-@test "keeps a file edited on the box, applies the rest and pages once" {
-  # The conflict outlives every pass, so with a one-second interval a page per
-  # failure would be several pages by the time the assertions run.
+@test "catches up at boot with a change pushed while the box was down, then exits" {
   seed_dotfiles
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=1 \
-    -e NTFY_URL=http://127.0.0.1:8099/afkd -e BOX_NAME=ci
+  push_while_down 'echo v2 > dot_synced'
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
+  wait_ready
+
+  wait_for_content /home/dev/.synced v2
+  wait_for_sync_to_exit
+}
+
+@test "a laptop's ssh update reaches a running box" {
+  seed_dotfiles
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -p 127.0.0.1::22
+  wait_ready
+  wait_for_file /home/dev/.apply-env
+  wait_for_sync_to_exit
+  push_while_up 'echo v2 > dot_synced'
+
+  run ssh -n -i "$KEYFILE" -p "$(host_port)" \
+    -o BatchMode=yes -o IdentitiesOnly=yes -o LogLevel=ERROR \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    dev@127.0.0.1 'zsh -c "chezmoi update --init --no-tty --keep-going --error-on-conflict"'
+  echo "$output"
+  [ "$status" -eq 0 ]
+  run as_dev cat /home/dev/.synced
+  [ "$output" = "v2" ]
+}
+
+@test "at boot keeps a file edited on the box, applies the rest and pages" {
+  # The repo's run_before script holds the pass until the test's ntfy listener
+  # is up, which needs sshd up first, so this also proves the pass does not
+  # hold up sshd.
+  seed_dotfiles
+  seed_home "$HOME_VOL" 'echo edited-on-box > ~/.edited'
+  push_while_down '
+    echo v2 > dot_edited
+    echo v2 > dot_synced
+    printf "#!/bin/sh\nuntil [ -e /tmp/listening ]; do sleep 0.2; done\n" > run_before_wait-for-listener.sh'
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e NTFY_URL=http://127.0.0.1:8099/afkd -e BOX_NAME=ci
   wait_ready
   in_box sh -c 'python3 -c "
 import http.server
@@ -77,11 +129,10 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer((\"127.0.0.1\", 8099), H).serve_forever()
 " >/dev/null 2>&1 &'
   sleep 1
+  in_box touch /tmp/listening
 
-  as_dev sh -c 'echo edited-on-box > ~/.edited'
-  push_change 'echo v2 > dot_edited && echo v2 > dot_synced'
   wait_for_content /home/dev/.synced v2
-  sleep 4
+  wait_for_sync_to_exit
 
   run as_dev cat /home/dev/.edited
   [ "$output" = "edited-on-box" ]
@@ -91,15 +142,12 @@ http.server.HTTPServer((\"127.0.0.1\", 8099), H).serve_forever()
 
 @test "hands the repo's scripts a session's environment but not the ntfy token" {
   seed_dotfiles
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=1 \
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" \
     -e GH_TOKEN=ghp_from_deployment -e NTFY_URL=http://127.0.0.1:9/afkd \
     -e NTFY_TOKEN=tk_secret
   wait_ready
 
-  as_dev rm -f /home/dev/.apply-env
-  push_change 'echo v2 > dot_synced'
-  wait_for_content /home/dev/.synced v2
-
+  wait_for_file /home/dev/.apply-env
   run as_dev cat /home/dev/.apply-env
   [[ "$output" == *"GH_TOKEN=ghp_from_deployment"* ]]
   [[ "$output" == *"/home/dev/.local/bin"* ]]
@@ -107,30 +155,11 @@ http.server.HTTPServer((\"127.0.0.1\", 8099), H).serve_forever()
   [[ "$output" != *"NTFY_URL"* ]]
 }
 
-@test "waits quietly for a home with no dotfiles repo" {
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=1
+@test "exits quietly on a home with no dotfiles repo" {
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY"
   wait_ready
-  sleep 3
 
-  sync_running
+  wait_for_sync_to_exit
   run box_logs
   [[ "$output" != *"dotfiles-sync"* ]]
-}
-
-@test "DOTFILES_SYNC_INTERVAL=0 turns the sync off" {
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=0
-  wait_ready
-
-  ! sync_running
-  run box_logs
-  [[ "$output" == *"dotfiles sync: off"* ]]
-}
-
-@test "a DOTFILES_SYNC_INTERVAL that is not a number warns and syncs hourly" {
-  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -e DOTFILES_SYNC_INTERVAL=1h
-  wait_ready
-
-  sync_running
-  run box_logs
-  [[ "$output" == *"DOTFILES_SYNC_INTERVAL 1h is not a number of seconds"* ]]
 }

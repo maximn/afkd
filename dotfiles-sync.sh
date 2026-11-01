@@ -1,10 +1,8 @@
 #!/bin/bash
-# Keeps the user's chezmoi dotfiles applied: every DOTFILES_SYNC_INTERVAL
-# seconds it pulls the repo and applies it, so a change pushed from a laptop
-# reaches the box without anyone logging in. Started by the entrypoint as dev,
-# with only PATH, HOME, the ntfy settings and BOX_NAME. A home with no chezmoi
-# source directory is skipped on every pass, so a repo set up later is picked
-# up without a restart.
+# Catches a chezmoi dotfiles repo up once, at boot, so a change pushed while the
+# box was down is not missed. While the box is up, changes reach it when a
+# laptop runs chezmoi update over ssh. Started by the entrypoint as dev, with
+# only PATH, HOME, the ntfy settings and BOX_NAME.
 #
 # chezmoi runs through zsh so that it gets what a session gets -- the mise
 # shims and ~/.local/bin on PATH, GH_TOKEN for a private repo -- because the
@@ -13,13 +11,11 @@
 # image's.
 #
 # A file edited on the box since chezmoi last wrote it is a conflict: it is
-# left alone, the rest is still applied, and the pass counts as failed. A
-# failure pages once, on the first failed pass after one that was not, rather
-# than every interval until someone looks.
+# left alone, the rest is still applied, and the pass counts as failed. Nobody
+# is watching a boot, so a failure pages.
 set -uo pipefail
 
-interval="${DOTFILES_SYNC_INTERVAL:-3600}"
-source_dir="$HOME/.local/share/chezmoi"
+[ -d "$HOME/.local/share/chezmoi" ] || exit 0
 
 notify_failure() {
   [ -n "${NTFY_URL:-}" ] || return 0
@@ -33,18 +29,10 @@ notify_failure() {
     "${NTFY_URL}" || true
 }
 
-failing=0
-while :; do
-  if [ -d "$source_dir" ]; then
-    if env -u NTFY_URL -u NTFY_TOKEN zsh -c \
-         'chezmoi update --init --no-tty --keep-going --error-on-conflict' </dev/null 2>&1 \
-         | sed -u 's/^/dotfiles-sync: /'; then
-      failing=0
-    elif [ "$failing" -eq 0 ]; then
-      failing=1
-      echo "dotfiles-sync: failed; run chezmoi status to see why" >&2
-      notify_failure
-    fi
-  fi
-  sleep "$interval"
-done
+if ! env -u NTFY_URL -u NTFY_TOKEN zsh -c \
+     'chezmoi update --init --no-tty --keep-going --error-on-conflict' </dev/null 2>&1 \
+     | sed -u 's/^/dotfiles-sync: /'; then
+  echo "dotfiles-sync: failed; run chezmoi status to see why" >&2
+  notify_failure
+  exit 1
+fi

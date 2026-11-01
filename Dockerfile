@@ -275,8 +275,8 @@ RUN case "${TARGETARCH}" in \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
-# chezmoi, for a dotfiles repo of the user's own; dotfiles-sync keeps it
-# applied. The asset is checked against the checksums file from the same
+# chezmoi, for a dotfiles repo of the user's own; dotfiles-sync catches it up
+# at boot. The asset is checked against the checksums file from the same
 # release, and one missing from that file is refused rather than skipped.
 # renovate: datasource=github-releases depName=twpayne/chezmoi extractVersion=^v(?<version>.+)$
 ARG CHEZMOI_VERSION=2.73.3
@@ -289,8 +289,8 @@ RUN case "${TARGETARCH}" in \
     && tmp="$(mktemp -d)" \
     && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
     && curl -fsSL "${release}/chezmoi_${CHEZMOI_VERSION}_checksums.txt" -o "${tmp}/checksums.txt" \
-    && grep -E "^[0-9a-f]{64}  ${asset}\$" "${tmp}/checksums.txt" > "${tmp}/want" \
-    && (cd "${tmp}" && sha256sum -c --quiet want) \
+    && sed -En "s#^([0-9a-f]{64})  ${asset}\$#\1  ${tmp}/${asset}#p" "${tmp}/checksums.txt" \
+       | sha256sum -c --quiet - \
     && tar -xzf "${tmp}/${asset}" -C /usr/local/bin chezmoi \
     && rm -rf "${tmp}"
 
