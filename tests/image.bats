@@ -29,7 +29,7 @@ dockerfile_arg() {
 @test "ships the expected toolchain" {
   local tool
   for tool in git gh tmux zsh jq rg fdfind curl wget python3 make htop \
-    fzf starship glow git-spice gs herdr claude codex \
+    fzf starship glow git-spice gs herdr chezmoi claude codex \
     mise node npm npx corepack yarn pnpm \
     vi vim editor man gcc g++ pkg-config \
     dig ping nc lsof strace file tree eza rsync xz zip ssh \
@@ -396,6 +396,16 @@ EOF
   run in_box herdr --version
   [ "$status" -eq 0 ]
   [[ "$output" == *"$want"* ]]
+}
+
+@test "installs the pinned chezmoi version" {
+  local want
+  want="$(dockerfile_arg CHEZMOI_VERSION)"
+  [ -n "$want" ]
+
+  run in_box chezmoi --version
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"v$want,"* ]]
 }
 
 # `script` gives pbcopy a terminal and records what reaches it. "aGk=" is
