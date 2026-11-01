@@ -307,6 +307,31 @@ env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     --avoid '^(sshd-session|herdr|tmux: server)$' \
     -N /usr/local/libexec/afkd/oom-notify &
 
+# Dotfiles sync: keeps a chezmoi repo in home applied, so a change pushed
+# from a laptop reaches the box on its own. A no-op until the user has run
+# `chezmoi init`. 0 turns it off; anything else that is not a number of
+# seconds only warns, like everything else here that does not stop a login.
+#
+# As dev, since everything it writes is dev's home, and with an empty
+# environment plus what it needs, as for earlyoom above: the tokens a session
+# gets, it reads through zsh the way a session does, rather than inheriting
+# every variable the container was given. In the background, so it cannot
+# hold up sshd, which then reaps it like earlyoom.
+sync_interval="${DOTFILES_SYNC_INTERVAL:-3600}"
+if ! [[ "$sync_interval" =~ ^[0-9]+$ ]]; then
+  printf 'warning: DOTFILES_SYNC_INTERVAL %q is not a number of seconds - syncing hourly.\n' "$sync_interval" >&2
+  sync_interval=3600
+fi
+if [ "$sync_interval" -eq 0 ]; then
+  echo "dotfiles sync: off (DOTFILES_SYNC_INTERVAL=0)"
+else
+  runuser -u dev -- env -i PATH=/usr/local/bin:/usr/bin:/bin \
+    HOME=/home/dev USER=dev LOGNAME=dev SHELL=/usr/bin/zsh \
+    NTFY_URL="${NTFY_URL:-}" NTFY_TOKEN="${NTFY_TOKEN:-}" BOX_NAME="${BOX_NAME:-}" \
+    DOTFILES_SYNC_INTERVAL="$sync_interval" \
+    /usr/local/libexec/afkd/dotfiles-sync &
+fi
+
 # nofile is raised by docker-compose.yaml, which a host that runs the image
 # some other way -- a bare `docker run`, an older Dockerfile-based Coolify app --
 # does not read. A JetBrains backend then hits EMFILE partway through indexing

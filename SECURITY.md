@@ -45,6 +45,12 @@ Design decisions that follow from that:
   which is a limit rather than a privilege. It is still not a sandbox: anyone who can log in has full control
   of the container, through `sudo`. Don't expose port 22 to the internet without a firewall,
   and don't share a box with people you wouldn't hand those credentials to.
+- **The dotfiles sync runs your repo's code.** Once you have run
+  `chezmoi init` on the box, it pulls and applies that repo every hour, as
+  dev and with `GH_TOKEN`, and a repo can carry scripts chezmoi runs on apply.
+  Anyone who can push to that repo can run code on the box, so give push
+  access only to whoever you would give a login. The ntfy settings are not
+  passed to those scripts. `DOTFILES_SYNC_INTERVAL=0` turns the sync off.
 - **Agent permissions** are seeded in `~/.claude/settings.json` with a small
   deny list. That is a convenience, not a security boundary.
 

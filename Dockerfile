@@ -275,6 +275,25 @@ RUN case "${TARGETARCH}" in \
       -o /usr/local/bin/herdr \
     && chmod +x /usr/local/bin/herdr
 
+# chezmoi, for a dotfiles repo of the user's own; dotfiles-sync keeps it
+# applied. The asset is checked against the checksums file from the same
+# release, and one missing from that file is refused rather than skipped.
+# renovate: datasource=github-releases depName=twpayne/chezmoi extractVersion=^v(?<version>.+)$
+ARG CHEZMOI_VERSION=2.73.3
+RUN case "${TARGETARCH}" in \
+      amd64|arm64) ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac \
+    && release="https://github.com/twpayne/chezmoi/releases/download/v${CHEZMOI_VERSION}" \
+    && asset="chezmoi_${CHEZMOI_VERSION}_linux_${TARGETARCH}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
+    && curl -fsSL "${release}/chezmoi_${CHEZMOI_VERSION}_checksums.txt" -o "${tmp}/checksums.txt" \
+    && grep -E "^[0-9a-f]{64}  ${asset}\$" "${tmp}/checksums.txt" > "${tmp}/want" \
+    && (cd "${tmp}" && sha256sum -c --quiet want) \
+    && tar -xzf "${tmp}/${asset}" -C /usr/local/bin chezmoi \
+    && rm -rf "${tmp}"
+
 # Language runtimes are per project, so they come from mise rather than from the
 # base image: a repo's .nvmrc, .node-version, .python-version or .tool-versions
 # picks its own version. The binary is the static one from mise's own image,
@@ -427,8 +446,9 @@ RUN useradd --create-home --uid 1000 --user-group --shell /usr/bin/zsh dev \
 COPY home-init.sh /usr/local/libexec/afkd/home-init
 COPY afkd-migrate.sh /usr/local/bin/afkd-migrate
 COPY oom-notify.sh /usr/local/libexec/afkd/oom-notify
+COPY dotfiles-sync.sh /usr/local/libexec/afkd/dotfiles-sync
 RUN chmod 755 /usr/local/libexec/afkd/home-init /usr/local/bin/afkd-migrate \
-      /usr/local/libexec/afkd/oom-notify
+      /usr/local/libexec/afkd/oom-notify /usr/local/libexec/afkd/dotfiles-sync
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

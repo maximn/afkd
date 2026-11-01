@@ -26,6 +26,7 @@ tree all survive a dropped connection, a closed laptop, and a redeploy.
 | Building | `gcc`/`g++`, `make`, `pkg-config`, OpenSSL, zlib and libffi headers — enough for node-gyp, `openssl-sys` and most Python sdists |
 | Diagnostics | `dig`, `ping`, `nc`, `lsof`, `strace`, `htop` |
 | Memory | [earlyoom](https://github.com/rfjakob/earlyoom), so a box short of memory kills one process instead of hanging; see [Memory](#memory) |
+| Dotfiles | [chezmoi](https://www.chezmoi.io), kept in sync with your dotfiles repo; see [Dotfiles](#dotfiles) |
 | Reading | [glow](https://github.com/charmbracelet/glow) (Markdown in the terminal) |
 | Access | `openssh-server` (key auth only), `xterm-ghostty` terminfo |
 
@@ -114,6 +115,27 @@ With swap, earlyoom waits until swap is nearly full as well before it kills,
 and the box can be slow until then. Keep the swap small so that wait is short:
 2 GB holds what idle agents leave untouched, and fills quickly when the agents
 together really need more memory than the host has.
+
+### Dotfiles
+
+Bring your own config — a global `CLAUDE.md`, skills, git identity — from a
+[chezmoi](https://www.chezmoi.io) dotfiles repo. Once, on the box:
+
+```bash
+chezmoi init --apply <your-github-user>   # clones github.com/<you>/dotfiles
+```
+
+A private repo clones with `GH_TOKEN`, given read access to it.
+
+From then on the box pulls and applies the repo every hour, so a change you
+push from your laptop reaches it without a login. Set `DOTFILES_SYNC_INTERVAL`
+to change how often, or `0` to turn it off.
+
+- A file you edited on the box since the last apply is left alone, the rest
+  still applies, and with `NTFY_URL` set you get one page ("Dotfiles sync
+  failed"). `chezmoi status` and `chezmoi diff` show what is waiting;
+  `chezmoi re-add` keeps your edit, `chezmoi apply --force` takes the repo's.
+- Output from each sync goes to the container log, prefixed `dotfiles-sync:`.
 
 ## Connect
 
