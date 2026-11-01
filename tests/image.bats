@@ -466,6 +466,22 @@ interactive() {
   [[ "$output" == *"etc"* ]]
 }
 
+# Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
+# shortcuts such as Ctrl+A and Ctrl+E self-insert. Asserting the keymap covers
+# every emacs binding at once; the spot checks confirm the keymap is wired to
+# the widgets a user expects. Asserted on bindings because a keypress needs a
+# terminal to send it.
+@test "uses emacs shortcuts at the prompt" {
+  run interactive 'bindkey -lL main; for k in "^A" "^E" "^K" "^W" "^[b"; do bindkey -M main "$k"; done'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bindkey -A emacs main"* ]]
+  [[ "$output" == *'"^A" beginning-of-line'* ]]
+  [[ "$output" == *'"^E" end-of-line'* ]]
+  [[ "$output" == *'"^K" kill-line'* ]]
+  [[ "$output" == *'"^W" backward-kill-word'* ]]
+  [[ "$output" == *'"^[b" backward-word'* ]]
+}
+
 # The image's shell config lives under /etc and /usr/local/share, sourced from
 # the system zshrc. Home is about to become a volume, and a volume keeps
 # whatever it was first seeded with: config living there would stop receiving
