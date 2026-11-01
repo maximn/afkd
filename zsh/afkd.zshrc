@@ -7,6 +7,10 @@
 # The git plugin registers completions with compdef, so compinit runs first.
 autoload -Uz compinit && compinit
 
+# Stock zsh leaves the main keymap on vi insert when nothing picks one, so
+# Ctrl+A and Ctrl+E would self-insert. The box is used with emacs keys.
+bindkey -e
+
 source /usr/local/share/afkd/zsh/omz/lib-git.zsh
 source /usr/local/share/afkd/zsh/omz/git.plugin.zsh
 
