@@ -15,6 +15,11 @@
 # is watching a boot, so a failure pages.
 set -uo pipefail
 
+# chezmoi derives a target's mode from its umask. A session gets 002 from
+# pam_umask, but a boot has no login, so without this each boot and the next
+# session's chezmoi would keep flipping the modes of every managed file.
+umask 002
+
 [ -d "$HOME/.local/share/chezmoi" ] || exit 0
 
 notify_failure() {

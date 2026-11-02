@@ -107,6 +107,24 @@ wait_for_sync_to_exit() {
   [ "$output" = "v2" ]
 }
 
+@test "the pass at boot leaves nothing for a session's chezmoi to change" {
+  # sshd sessions and the entrypoint start from different umasks, and chezmoi
+  # derives a target's mode from the umask it runs under.
+  seed_dotfiles
+  start_box -e SSH_PUBLIC_KEYS="$PUBKEY" -p 127.0.0.1::22
+  wait_ready
+  wait_for_file /home/dev/.apply-env
+  wait_for_sync_to_exit
+
+  run ssh -n -i "$KEYFILE" -p "$(host_port)" \
+    -o BatchMode=yes -o IdentitiesOnly=yes -o LogLevel=ERROR \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    dev@127.0.0.1 'zsh -c "chezmoi status --exclude=scripts"'
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "at boot keeps a file edited on the box, applies the rest and pages" {
   # The repo's run_before script holds the pass until the test's ntfy listener
   # is up, which needs sshd up first, so this also proves the pass does not
