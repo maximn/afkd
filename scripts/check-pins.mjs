@@ -24,6 +24,13 @@
 
 import { readFileSync } from 'node:fs'
 
+// Their next word is a value, not a package. An option missing from this list
+// has its value reported as an unpinned package, so a gap fails loud rather
+// than letting something through.
+const NPM_OPTIONS_WITH_VALUE = new Set([
+  '-C', '--prefix', '--cache', '--registry', '--tag', '--location', '--omit', '--include',
+])
+
 export function check(src, renovateJson) {
   const problems = []
   const problem = (line, what, fix) => problems.push({ line, what, fix })
@@ -147,11 +154,12 @@ export function check(src, renovateJson) {
     const ignored = /pin-check:\s*ignore/.test(above)
 
     // rule 4: global npm installs carry a version
-    const npm = /npm (?:install|i) -g (.+?)(?: && | ; |$)/.exec(text)
-    if (npm) {
-      for (const token of npm[1].split(/\s+/)) {
+    for (const [, args] of text.matchAll(/npm (?:install|i) (.+?)(?: && | ; |$)/g)) {
+      if (!/(?:^| )(?:-g|--global|--location[= ]global)(?: |$)/.test(args)) continue
+      const tokens = args.split(/\s+/)
+      for (const [i, token] of tokens.entries()) {
         const pkg = token.replace(/["']/g, '')
-        if (!pkg || pkg.startsWith('-')) continue
+        if (!pkg || pkg.startsWith('-') || NPM_OPTIONS_WITH_VALUE.has(tokens[i - 1])) continue
         // a scoped package carries a second @; a bare one needs any @
         const versioned = pkg.startsWith('@') ? pkg.lastIndexOf('@') > 0 : pkg.includes('@')
         if (!versioned) {
