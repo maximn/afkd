@@ -139,6 +139,16 @@ dockerfile_arg() {
   [ "$output" = "v$want" ]
 }
 
+@test "installs the pinned corepack" {
+  local want
+  want="$(dockerfile_arg COREPACK_VERSION)"
+  [ -n "$want" ]
+
+  run in_box corepack --version
+  [ "$status" -eq 0 ]
+  [ "$output" = "$want" ]
+}
+
 # The point of mise: a repo's .nvmrc picks its Node. Auto-install is off so
 # the case needs no network, and the second half proves the file is actually
 # read -- a version that is not installed has to be refused, not ignored.

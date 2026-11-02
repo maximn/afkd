@@ -347,15 +347,19 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 #
 # corepack puts yarn and pnpm on PATH, each resolving to the version a
 # project's packageManager field names -- which a single global yarn, as the
-# node base image shipped, never could. Node stops bundling corepack from 25 on,
-# so a major bump fails right here rather than quietly dropping yarn.
+# node base image shipped, never could. Node stopped bundling corepack from 25
+# on, so it is installed from npm at a pinned version rather than trusted to
+# come with the Node build.
 #
 # mise also writes download scratch under root's home, which nothing reads at
 # runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=26.13.0
+# renovate: datasource=npm depName=corepack
+ARG COREPACK_VERSION=0.36.0
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
     && mise install --system \
+    && npm install --global --prefix /usr/local "corepack@${COREPACK_VERSION}" \
     && corepack enable --install-directory /usr/local/bin yarn pnpm \
     && rm -rf /root/.local/share/mise /root/.local/state/mise /root/.cache/mise
 
