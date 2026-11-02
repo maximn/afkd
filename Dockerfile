@@ -209,8 +209,15 @@ RUN mkdir -p /usr/local/share/afkd/zsh/omz \
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
 ARG FZF_VERSION=0.74.5
-RUN curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
-      | tar -xz -C /usr/local/bin
+RUN release="https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}" \
+    && asset="fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
+    && want="$(curl -fsSL "${release}/fzf_${FZF_VERSION}_checksums.txt" | awk -v f="${asset}" '$2 == f { print $1 }')" \
+    && [ -n "${want}" ] \
+    && echo "${want}  ${tmp}/${asset}" | sha256sum -c --quiet - \
+    && tar -xzf "${tmp}/${asset}" -C /usr/local/bin fzf \
+    && rm -rf "${tmp}"
 
 # Markdown renderer for the terminal, so plans and READMEs an agent writes can
 # be read on the box instead of as raw markup. Pages through `less`.
@@ -222,8 +229,15 @@ RUN case "${TARGETARCH}" in \
       arm64) garch=arm64 ;; \
       *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
     esac \
-    && curl -fsSL "https://github.com/charmbracelet/glow/releases/download/v${GLOW_VERSION}/glow_${GLOW_VERSION}_Linux_${garch}.tar.gz" \
-      | tar -xz -C /usr/local/bin --strip-components=1 "glow_${GLOW_VERSION}_Linux_${garch}/glow"
+    && release="https://github.com/charmbracelet/glow/releases/download/v${GLOW_VERSION}" \
+    && asset="glow_${GLOW_VERSION}_Linux_${garch}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
+    && want="$(curl -fsSL "${release}/checksums.txt" | awk -v f="${asset}" '$2 == f { print $1 }')" \
+    && [ -n "${want}" ] \
+    && echo "${want}  ${tmp}/${asset}" | sha256sum -c --quiet - \
+    && tar -xzf "${tmp}/${asset}" -C /usr/local/bin --strip-components=1 "glow_${GLOW_VERSION}_Linux_${garch}/glow" \
+    && rm -rf "${tmp}"
 
 # The release asset, not starship.rs/install.sh. The installer was fetched
 # unversioned from a different host than the release and run as root, so the
@@ -259,20 +273,33 @@ RUN case "${TARGETARCH}" in \
       arm64) uarch=aarch64 ;; \
       *) echo "unsupported TARGETARCH: '${TARGETARCH}' (BuildKit sets this; a legacy builder does not)" >&2; exit 1 ;; \
     esac \
-    && curl -fsSL "https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}/git-spice.Linux-${uarch}.tar.gz" \
-      | tar -xz -C /usr/local/bin git-spice \
+    && release="https://github.com/abhinav/git-spice/releases/download/v${GIT_SPICE_VERSION}" \
+    && asset="git-spice.Linux-${uarch}.tar.gz" \
+    && tmp="$(mktemp -d)" \
+    && curl -fsSL "${release}/${asset}" -o "${tmp}/${asset}" \
+    && want="$(curl -fsSL "${release}/checksums.txt" | awk -v f="${asset}" '$2 == f { print $1 }')" \
+    && [ -n "${want}" ] \
+    && echo "${want}  ${tmp}/${asset}" | sha256sum -c --quiet - \
+    && tar -xzf "${tmp}/${asset}" -C /usr/local/bin git-spice \
+    && rm -rf "${tmp}" \
     && ln -sf /usr/local/bin/git-spice /usr/local/bin/gs
 
 # herdr is pre-1.0 and ships stable releases weekly.
+# herdr publishes no checksum file, so each binary is pinned by its sha256
+# here, taken from the release at HERDR_VERSION. A version bump fails the build
+# until these are updated from the new release, which is the point.
 # renovate: datasource=github-releases depName=herdrdev/herdr extractVersion=^v(?<version>.+)$
 ARG HERDR_VERSION=0.9.5
+ARG HERDR_SHA256_X86_64=14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d
+ARG HERDR_SHA256_AARCH64=17d7536f2da50859523680ef279dffcac8e4a235f4e46fe8da6c2ec44141897c
 RUN case "${TARGETARCH}" in \
-      amd64) uarch=x86_64 ;; \
-      arm64) uarch=aarch64 ;; \
+      amd64) uarch=x86_64; want="${HERDR_SHA256_X86_64}" ;; \
+      arm64) uarch=aarch64; want="${HERDR_SHA256_AARCH64}" ;; \
       *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
     esac \
     && curl -fsSL "https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${uarch}" \
       -o /usr/local/bin/herdr \
+    && echo "${want}  /usr/local/bin/herdr" | sha256sum -c --quiet - \
     && chmod +x /usr/local/bin/herdr
 
 # chezmoi, for a dotfiles repo of the user's own; dotfiles-sync catches it up
