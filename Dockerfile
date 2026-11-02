@@ -345,23 +345,29 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 # other binary here and no volume mounted over home can hide it; per-project
 # versions install into home on first use.
 #
-# corepack puts yarn and pnpm on PATH, each resolving to the version a
-# project's packageManager field names -- which a single global yarn, as the
-# node base image shipped, never could. Node stopped bundling corepack from 25
-# on, so it is installed from npm at a pinned version rather than trusted to
-# come with the Node build.
-#
 # mise also writes download scratch under root's home, which nothing reads at
 # runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
 ARG NODE_VERSION=26.13.0
-# renovate: datasource=npm depName=corepack
-ARG COREPACK_VERSION=0.36.0
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
     && mise install --system \
-    && npm install --global --prefix /usr/local "corepack@${COREPACK_VERSION}" \
-    && corepack enable --install-directory /usr/local/bin yarn pnpm \
     && rm -rf /root/.local/share/mise /root/.local/state/mise /root/.cache/mise
+
+# corepack puts yarn and pnpm on PATH, each resolving to the version a
+# project's packageManager field names -- which a single global yarn, as the
+# node base image shipped, never could. Node stopped bundling corepack from 25
+# on, so it comes from npm at a pinned version, and the links to yarn and pnpm
+# come with it from the package's bin map.
+#
+# Its scripts stay off because this runs as root in an image built to hold
+# credentials, against a pin the repo holds no hash for; corepack has no install
+# step to skip. npm runs through mise, whose wrapper reshims after a global
+# install, and NPM_CONFIG_CACHE is only set for login shells, so mise's state and
+# npm's cache both land under root's home and are cleared here too.
+# renovate: datasource=npm depName=corepack
+ARG COREPACK_VERSION=0.36.0
+RUN npm install --global --prefix /usr/local --ignore-scripts "corepack@${COREPACK_VERSION}" \
+    && rm -rf /root/.npm /root/.local/share/mise /root/.local/state/mise /root/.cache/mise
 
 # Each agent's own update mechanism is switched off in a system-level file
 # rather than through ENV, which never reaches an SSH login. Left on, they
