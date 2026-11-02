@@ -353,7 +353,7 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 # mise also writes download scratch under root's home, which nothing reads at
 # runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=26.13.0
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
     && mise install --system \
     && corepack enable --install-directory /usr/local/bin yarn pnpm \
