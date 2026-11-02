@@ -11,6 +11,10 @@ autoload -Uz compinit && compinit
 # Ctrl+A and Ctrl+E would self-insert. The box is used with emacs keys.
 bindkey -e
 
+# Typing a directory's name changes into it, so `..` and `../..` work without
+# an alias for each depth. Stock zsh leaves this off.
+setopt AUTO_CD
+
 source /usr/local/share/afkd/zsh/omz/lib-git.zsh
 source /usr/local/share/afkd/zsh/omz/git.plugin.zsh
 

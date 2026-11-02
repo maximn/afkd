@@ -466,6 +466,16 @@ interactive() {
   [[ "$output" == *"etc"* ]]
 }
 
+# A bare directory name, `..` included, changes into it. AUTO_CD only fires on
+# lines typed at a prompt, so the commands arrive on stdin rather than as -c;
+# the echoed marker keeps the prompt's own output out of the comparison.
+@test "a bare directory name changes into it" {
+  run as_dev sh -c "printf 'cd /usr/share/doc\n..\necho at:\$PWD\n../..\necho at:\$PWD\nexit\n' | zsh -i 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"at:/usr/share"* ]]
+  [[ "$output" == *"at:/"* ]]
+}
+
 # Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
 # shortcuts such as Ctrl+A and Ctrl+E self-insert. Asserting the keymap covers
 # every emacs binding at once; the spot checks confirm the keymap is wired to
