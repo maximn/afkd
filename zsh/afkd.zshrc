@@ -38,6 +38,6 @@ alias lt='eza -T --git-ignore -L 2'
 # Only a shell that starts in home, as an ssh login does, moves to the projects
 # directory. One started anywhere else was put there on purpose, by a herdr
 # worktree, a restored pane or a split, and has to stay for the agent run in it.
-if [[ $PWD == "$HOME" ]]; then
-  cd ~/dev 2>/dev/null
+if [[ $PWD -ef $HOME && -d ~/dev ]]; then
+  cd ~/dev
 fi

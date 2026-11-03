@@ -486,12 +486,15 @@ interactive() {
   [ "$output" = "/home/dev/dev" ]
 }
 
+# herdr starts a pane's shell in the pane's directory but passes on the
+# server's own PWD, which is home.
 @test "a shell started outside home keeps its directory" {
-  in_box mkdir -p /home/dev/dev/wt/app
-  in_box chown -R dev:dev /home/dev/dev/wt
-  run docker exec -u dev -w /home/dev/dev/wt/app "$BOX" sh -c 'zsh -ic pwd 2>/dev/null'
+  local dir
+  dir=$(as_dev mktemp -d)
+  run as_dev_in "$dir" sh -c 'env PWD=/home/dev zsh -ic pwd 2>/dev/null'
+  as_dev rm -rf "$dir"
   [ "$status" -eq 0 ]
-  [ "$output" = "/home/dev/dev/wt/app" ]
+  [ "$output" = "$dir" ]
 }
 
 # Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
