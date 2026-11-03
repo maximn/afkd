@@ -476,6 +476,24 @@ interactive() {
   [[ "$output" == *"at:/"* ]]
 }
 
+# A login starts in home and is moved to the projects directory. Anything that
+# starts a shell somewhere on purpose -- a herdr worktree pane, a pane restored
+# after a restart, a split -- keeps that directory: the rc file used to send
+# every interactive shell to ~/dev, so agents launched there lost their project.
+@test "a shell started in home moves to ~/dev" {
+  run interactive 'pwd'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/dev/dev" ]
+}
+
+@test "a shell started outside home keeps its directory" {
+  in_box mkdir -p /home/dev/dev/wt/app
+  in_box chown -R dev:dev /home/dev/dev/wt
+  run docker exec -u dev -w /home/dev/dev/wt/app "$BOX" sh -c 'zsh -ic pwd 2>/dev/null'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/dev/dev/wt/app" ]
+}
+
 # Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
 # shortcuts such as Ctrl+A and Ctrl+E self-insert. Asserting the keymap covers
 # every emacs binding at once; the spot checks confirm the keymap is wired to
