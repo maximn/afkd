@@ -35,11 +35,10 @@ alias ll='eza -l --git --group-directories-first'
 alias la='eza -la --git --group-directories-first'
 alias lt='eza -T --git-ignore -L 2'
 
-# Only a shell that starts in home, as an ssh login does, or in /, where
-# docker exec and su leave it when nothing picks a directory, moves to the
-# projects directory. One started anywhere else was put there on purpose, by a
-# herdr worktree, a restored pane or a split, and has to stay for the agent run
-# in it.
+# An ssh login starts in home, and docker exec and su start in / since the image
+# sets no WORKDIR. Nothing chose those, so they move to the projects directory.
+# Anything else, a herdr worktree, a restored pane or a split, was put there on
+# purpose and stays for the agent run in it.
 if [[ ( $PWD -ef $HOME || $PWD == / ) && -d ~/dev ]]; then
   cd ~/dev
 fi

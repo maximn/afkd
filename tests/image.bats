@@ -441,7 +441,12 @@ EOF
 # ~/.zshrc. `zsh -i` is what makes zsh read rc files at all; its stray
 # terminal chatter is dropped so only the probe's output is compared.
 interactive() {
-  as_dev zsh -ic "$1" 2>/dev/null
+  interactive_in /home/dev "$1"
+}
+
+# interactive_in DIR COMMAND [NAME=VALUE...]
+interactive_in() {
+  as_dev_in "$1" env "${@:3}" zsh -ic "$2" 2>/dev/null
 }
 
 @test "an interactive shell has the image's config sourced" {
@@ -476,10 +481,6 @@ interactive() {
   [[ "$output" == *"at:/"* ]]
 }
 
-# A login starts in home and is moved to the projects directory. Anything that
-# starts a shell somewhere on purpose -- a herdr worktree pane, a pane restored
-# after a restart, a split -- keeps that directory: the rc file used to send
-# every interactive shell to ~/dev, so agents launched there lost their project.
 @test "a shell started in home moves to ~/dev" {
   run interactive 'pwd'
   [ "$status" -eq 0 ]
@@ -487,7 +488,7 @@ interactive() {
 }
 
 @test "a shell started in / moves to ~/dev" {
-  run as_dev_in / sh -c 'zsh -ic pwd 2>/dev/null'
+  run interactive_in / 'pwd'
   [ "$status" -eq 0 ]
   [ "$output" = "/home/dev/dev" ]
 }
@@ -495,12 +496,9 @@ interactive() {
 # herdr starts a pane's shell in the pane's directory but passes on the
 # server's own PWD, which is home.
 @test "a shell started outside home keeps its directory" {
-  local dir
-  dir=$(as_dev mktemp -d)
-  run as_dev_in "$dir" sh -c 'env PWD=/home/dev zsh -ic pwd 2>/dev/null'
-  as_dev rm -rf "$dir"
+  run interactive_in /tmp 'pwd' PWD=/home/dev
   [ "$status" -eq 0 ]
-  [ "$output" = "$dir" ]
+  [ "$output" = "/tmp" ]
 }
 
 # Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
