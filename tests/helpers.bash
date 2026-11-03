@@ -113,7 +113,13 @@ in_box() {
 # As the login user, the way an ssh session runs. docker exec takes HOME from
 # the user's passwd entry, but not the working directory.
 as_dev() {
-  docker exec -u dev -w /home/dev "$BOX" "$@"
+  as_dev_in /home/dev "$@"
+}
+
+as_dev_in() {
+  local dir=$1
+  shift
+  docker exec -u dev -w "$dir" "$BOX" "$@"
 }
 
 box_logs() {
