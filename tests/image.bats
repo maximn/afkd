@@ -486,6 +486,12 @@ interactive() {
   [ "$output" = "/home/dev/dev" ]
 }
 
+@test "a shell started in / moves to ~/dev" {
+  run as_dev_in / sh -c 'zsh -ic pwd 2>/dev/null'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/dev/dev" ]
+}
+
 # herdr starts a pane's shell in the pane's directory but passes on the
 # server's own PWD, which is home.
 @test "a shell started outside home keeps its directory" {
