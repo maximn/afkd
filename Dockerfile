@@ -2,7 +2,7 @@
 # top by mise rather than chosen by the base. Not -slim, whose dpkg excludes
 # strip man pages and docs from every package installed afterwards -- the right
 # trade for a service, the wrong one for a box people work on.
-FROM debian:trixie-20261005@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5
+FROM debian:trixie-20261027@sha256:2dc419c6d7fe3dad0a2f9fd469c34cc90b0f9ba642d8fde837fe3d7d34a0e7f1
 
 # Most fetches below are `curl ... | tar`. Under the default `sh -c` a failed
 # download still exits 0 as long as tar is happy with the empty stream, so
