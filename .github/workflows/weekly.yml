@@ -58,6 +58,8 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '0'
+          # Upstream findings no bump here can fix yet, each scoped and expiring.
+          trivyignores: .trivyignore.yaml
           format: json
           output: trivy.json
 

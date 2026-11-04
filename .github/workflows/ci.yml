@@ -289,6 +289,8 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: '1'
+          # Upstream findings no bump here can fix yet, each scoped and expiring.
+          trivyignores: .trivyignore.yaml
 
   # The gate Renovate's automerge waits on. Matrixing the job above renamed
   # its checks to `Build & test image (amd64)` and `(arm64)`, and a required
