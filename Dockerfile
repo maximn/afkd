@@ -450,6 +450,7 @@ COPY tmux.conf /etc/tmux.conf
 # is the user's from then on.
 COPY git-aliases.zsh /usr/local/share/afkd/zsh/git-aliases.zsh
 COPY zsh/afkd.zshrc /etc/zsh/afkd.zshrc
+COPY starship/starship.toml /etc/starship.toml
 COPY zsh/skel.zshrc /etc/skel/.zshrc
 RUN echo 'source /etc/zsh/afkd.zshrc' >> /etc/zsh/zshrc \
     && cp /etc/skel/.zshrc /root/.zshrc

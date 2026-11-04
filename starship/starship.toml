@@ -1,0 +1,23 @@
+# Copied to /etc/starship.toml by the Dockerfile, and named by STARSHIP_CONFIG
+# in afkd.zshenv unless ~/.config/starship.toml exists. Starship reads one file
+# and never merges, so anything left out here stays at starship's default, and
+# a config of the user's own replaces this one whole.
+#
+# The prompt renders in whatever directory the shell enters, an archive just
+# unpacked included, so nothing it runs on the way may be chosen by that tree:
+# it would run as dev, who has passwordless sudo.
+
+# Working out what changed runs each file through the clean filter that the
+# repository's own .git/config names for it, and a filter is any command. That
+# happens whether starship asks git or its built-in gitoxide, and starship
+# defuses core.fsmonitor for the call but not filters. The branch, commit and
+# state segments read the repository without running it, so they stay.
+[git_status]
+disabled = true
+
+# rustc on PATH is rustup's proxy, which honours a rust-toolchain.toml in the
+# directory, and that file can name a toolchain by path -- so the version
+# check runs whatever rustc the tree ships. rustup is not in the image; one
+# `mise use rust` would arm this.
+[rust]
+disabled = true
