@@ -187,8 +187,11 @@ jobs:
               base="$(gh api "repos/$GH_REPO/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
                 --jq '[.workflow_runs[] | select(.event != "pull_request")][0].head_sha // ""')"
               [ -n "$base" ] || build "no green run on main to diff against"
+              # A rewritten history leaves the base unreachable, and the
+              # compare API answers that with a 404 rather than a status.
               compare="$(gh api "repos/$GH_REPO/compare/$base...$SHA" \
-                --jq '{status, count: (.files | length), files: [.files[].filename]}')"
+                --jq '{status, count: (.files | length), files: [.files[].filename]}')" \
+                || build "cannot compare $base...$SHA"
               [ "$(jq -r .status <<< "$compare")" = ahead ] || build "$SHA is not ahead of $base"
               [ "$(jq .count <<< "$compare")" -lt 300 ] || build "too many files to list since $base"
               echo "diffing against $base"
@@ -334,7 +337,7 @@ jobs:
   publish:
     name: Publish image (${{ matrix.arch }})
     needs: [changes, build-and-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.image == 'true'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.changes.outputs.image == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
