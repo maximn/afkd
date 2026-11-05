@@ -29,6 +29,21 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # VISUAL/EDITOR themselves and have no fallback of their own.
 export EDITOR=vim VISUAL=vim
 
+# The image's prompt config keeps starship from running code out of the
+# directory it renders in. Starship reads ~/.config/starship.toml only while
+# STARSHIP_CONFIG is unset, so naming the image's file over one the user wrote
+# would discard theirs without a word. Theirs wins instead, and with it the
+# choice of what their prompt runs. Settled again in every shell rather than
+# inherited, since a pane gets the environment of whatever started tmux or
+# herdr, from before the user wrote one; a path they set themselves is kept.
+if [[ ${STARSHIP_CONFIG:-/etc/starship.toml} == /etc/starship.toml ]]; then
+  if [[ -e $HOME/.config/starship.toml ]]; then
+    unset STARSHIP_CONFIG
+  else
+    export STARSHIP_CONFIG=/etc/starship.toml
+  fi
+fi
+
 # Inside a herdr or tmux pane, this shell and everything it starts -- agents,
 # and the builds and test runs they kick off -- go to the back of the queue:
 # first in line for an OOM killer (the kernel's, and the earlyoom the

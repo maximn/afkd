@@ -6,6 +6,7 @@ tests
 .env
 .env.example
 .hadolint.yaml
+.trivyignore.yaml
 renovate.json
 scripts
 LICENSE

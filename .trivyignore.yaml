@@ -1,0 +1,108 @@
+# Findings the scan reports as fixable but nothing in this repo can fix: the
+# fix exists upstream of a binary or package we only download, and no release
+# of that download carries it yet. Each entry is scoped to the paths it was
+# found in, so the same CVE turning up anywhere else is still reported, and
+# each one expires: on that date the finding comes back to the weekly-scan
+# issue, which is the reminder to check whether upstream has shipped.
+#
+# Remove an entry as soon as a bump picks up the fix -- an ignore that outlives
+# its finding hides the next regression of it.
+
+vulnerabilities:
+  # Go standard library. fzf 0.74.5 and git-spice 0.33.0 are the latest
+  # releases and were built with Go 1.27.2; the fix is in Go 1.27.3.
+  - id: CVE-2026-111943
+    paths:
+      - usr/local/bin/fzf
+      - usr/local/bin/git-spice
+      - usr/local/bin/glow
+    statement: Go stdlib in upstream release binaries; fixed in Go 1.27.3, which no fzf, git-spice or glow release is built with yet.
+    expired_at: 2026-12-04
+
+  # glow 3.0.0 is the latest release and was built with Go 1.26.5 against
+  # golang.org/x/net v0.53.0 and golang.org/x/text v0.39.0.
+  - id: CVE-2026-33818
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-39821
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib and golang.org/x/net in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+  - id: CVE-2026-46600
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib and golang.org/x/net in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56853
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56858
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56859
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56860
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56862
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-78667
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-78669
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib and golang.org/x/net in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+  - id: CVE-2026-97031
+    paths: [usr/local/bin/glow]
+    statement: Go stdlib in the glow 3.0.0 release binary; awaiting a glow release built with a fixed Go.
+    expired_at: 2026-12-04
+  - id: CVE-2026-25681
+    paths: [usr/local/bin/glow]
+    statement: golang.org/x/net v0.53.0 in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+  - id: CVE-2026-27136
+    paths: [usr/local/bin/glow]
+    statement: golang.org/x/net v0.53.0 in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+  - id: CVE-2026-56851
+    paths: [usr/local/bin/glow]
+    statement: golang.org/x/text v0.39.0 in the glow 3.0.0 release binary; awaiting a glow release.
+    expired_at: 2026-12-04
+
+  # npm's own bundled dependencies, as shipped inside Node by mise. Node 24.22.x
+  # (npm 11.19.1) and 26.13.0 (npm 11.20.0) both carry undici 6.28.0 and
+  # brace-expansion 5.0.9. The node/* glob keeps these matching across Node
+  # bumps, which change only the version directory.
+  - id: CVE-2026-19534
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/undici/package.json]
+    statement: undici bundled inside the npm that Node ships; fixed in npm 11.21.1, which no Node release bundles yet.
+    expired_at: 2026-12-04
+  - id: CVE-2026-87018
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/undici/package.json]
+    statement: undici bundled inside the npm that Node ships; fixed in undici 6.29.1, which no npm release bundles yet.
+    expired_at: 2026-12-04
+  - id: CVE-2026-109383
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/undici/package.json]
+    statement: undici bundled inside the npm that Node ships; fixed in undici 6.29.1, which no npm release bundles yet.
+    expired_at: 2026-12-04
+  - id: CVE-2026-109869
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/undici/package.json]
+    statement: undici bundled inside the npm that Node ships; fixed in undici 6.29.1, which no npm release bundles yet.
+    expired_at: 2026-12-04
+  - id: CVE-2026-102276
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/brace-expansion/package.json]
+    statement: brace-expansion bundled inside the npm that Node ships; fixed in npm 11.21.1, which no Node release bundles yet.
+    expired_at: 2026-12-04
+  - id: CVE-2026-102278
+    paths: [usr/local/share/mise/installs/node/*/lib/node_modules/npm/node_modules/brace-expansion/package.json]
+    statement: brace-expansion bundled inside the npm that Node ships; fixed in npm 11.21.1, which no Node release bundles yet.
+    expired_at: 2026-12-04

@@ -501,6 +501,40 @@ interactive_in() {
   [ "$output" = "/tmp" ]
 }
 
+# An unpacked archive can carry a .git of its own, and its config can name
+# commands: a clean filter runs whenever git status re-reads a file, which
+# every freshly extracted file needs. Entering the directory must not be enough
+# to run them, so the prompt must not shell out to git status there. A clone
+# never brings a .git/config along, hence the tarball. The prompt only renders
+# between lines typed at it, so the cd arrives on stdin, as in the AUTO_CD test.
+@test "entering an unpacked repository runs none of its git config" {
+  run as_dev sh -ec '
+    d="$(mktemp -d)"
+    git init -q "$d/src"
+    cd "$d/src"
+    echo hello > f.txt
+    echo "* filter=planted" > .gitattributes
+    git add .
+    git -c user.name=ci -c user.email=ci@test commit -qm fixture
+    git config filter.planted.clean "touch $d/ran; cat"
+    unpack() { mkdir "$d/$1"; tar -cf - -C "$d" src | tar -xf - -C "$d/$1"; }
+
+    unpack prompted
+    printf "cd %s\necho prompt:\$STARSHIP_SHELL\nexit\n" "$d/prompted/src" | zsh -i 2>/dev/null
+    [ -e "$d/ran" ] && echo "prompt ran the filter" || echo "prompt did not run the filter"
+
+    # The control: the same fixture does run under an explicit git status, so
+    # the assertion above cannot pass merely because the planted config is inert.
+    unpack typed
+    (cd "$d/typed/src" && git status --porcelain >/dev/null)
+    [ -e "$d/ran" ] && echo "git status ran the filter"
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"prompt:zsh"* ]]
+  [[ "$output" == *"prompt did not run the filter"* ]]
+  [[ "$output" == *"git status ran the filter"* ]]
+}
+
 # Stock zsh falls back to vi keys when nothing picks a keymap, so emacs
 # shortcuts such as Ctrl+A and Ctrl+E self-insert. Asserting the keymap covers
 # every emacs binding at once; the spot checks confirm the keymap is wired to
