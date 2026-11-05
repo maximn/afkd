@@ -59,6 +59,37 @@ rejects('an unpinned global npm install',
   (s) => `${s}\nRUN npm install -g some-new-tool\n`,
   'without a version')
 
+// The Dockerfile's one global install spells the flag out, which rule 4 used to
+// look straight past: dropping this pin passed Lint.
+rejects('the corepack install with its pin removed',
+  (s) => s.replace('"corepack@${COREPACK_VERSION}"', 'corepack'),
+  "'corepack' is installed without a version")
+
+rejects('an unpinned install spelled --global',
+  (s) => `${s}\nRUN npm install --global some-new-tool\n`,
+  "'some-new-tool' is installed without a version")
+
+rejects('an unpinned install with the flag after the package',
+  (s) => `${s}\nRUN npm install some-new-tool -g\n`,
+  "'some-new-tool' is installed without a version")
+
+rejects('an unpinned install behind an option that takes a value',
+  (s) => `${s}\nRUN npm install -g --prefix /usr/local some-new-tool\n`,
+  "'some-new-tool' is installed without a version")
+
+rejects('an unpinned install after a pinned one in the same RUN',
+  (s) => `${s}\nRUN npm install -g "pkg@1.0.0" && npm install --global some-new-tool\n`,
+  "'some-new-tool' is installed without a version")
+
+accepts('a pinned install behind an option that takes a value',
+  (s) => `${s}\nRUN npm install -g --prefix /usr/local "pkg@1.0.0"\n`)
+
+accepts('a pinned install with an option written as --key=value',
+  (s) => `${s}\nRUN npm install --global --prefix=/usr/local "pkg@1.0.0"\n`)
+
+accepts('an npm install that is not global',
+  (s) => `${s}\nRUN npm install --prefix /app some-dep\n`)
+
 // apt pins exact versions only for packages from repos that keep their old
 // releases (Claude Code's does). A version typed in by hand is one Renovate
 // cannot see, so it has to come from an annotated ARG like every other pin.

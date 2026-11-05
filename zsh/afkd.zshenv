@@ -12,7 +12,8 @@ path=("$HOME/.local/bin" "$HOME/.local/share/mise/shims" /usr/local/share/mise/s
 # The default Node is installed system-wide and owned by the image, and mise
 # reshims only the user's directory after `npm i -g` -- so a global install
 # into it would land where nothing on PATH points. Global CLIs go to home
-# instead, which also keeps them across a Node version change.
+# instead, which also keeps them across a Node version change -- though a
+# native addon compiled against one Node major's ABI needs a rebuild on the next.
 export NPM_CONFIG_PREFIX="$HOME/.local"
 
 # npm ignores XDG on Linux and caches to ~/.npm. ~/.cache is where every

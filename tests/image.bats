@@ -113,9 +113,12 @@ dockerfile_arg() {
 }
 
 # Neither agent is installed through npm any more; a leftover global install
-# would shadow the pinned one depending on PATH order.
+# would shadow the pinned one depending on PATH order. corepack made /usr/local
+# a second global root, which `npm ls -g` alone never reads, so finding corepack
+# proves that root was listed.
 @test "no agent is installed through npm" {
-  run in_box sh -c 'npm ls -g --depth=0 2>/dev/null'
+  run in_box sh -c 'npm ls -g --depth=0 2>/dev/null; npm ls -g --depth=0 --prefix /usr/local 2>/dev/null'
+  [[ "$output" == *"corepack@"* ]]
   [[ "$output" != *"@anthropic-ai/claude-code"* ]]
   [[ "$output" != *"@openai/codex"* ]]
 }
@@ -137,6 +140,50 @@ dockerfile_arg() {
   run as_dev zsh -c 'node --version'
   [ "$status" -eq 0 ]
   [ "$output" = "v$want" ]
+}
+
+# corepack sits last on a session's PATH, behind every shim directory, so this
+# asks a session's shell rather than the image ENV.
+@test "installs the pinned corepack" {
+  local want
+  want="$(dockerfile_arg COREPACK_VERSION)"
+  [ -n "$want" ]
+
+  run as_dev zsh -c 'corepack --version'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$want" ]
+}
+
+# Why corepack is kept: each project gets the yarn or pnpm it names, which one
+# global install never could. Two yarns prove the field is read rather than a
+# default answering. Unlike the cases around it this one needs the registry: what
+# a bad corepack bump breaks is the download and signature check, and neither
+# exists without a real signed package. `corepack --version` passes regardless.
+@test "yarn and pnpm run the version a project's packageManager names" {
+  local pm
+  for pm in yarn@1.22.21 yarn@4.9.1 pnpm@10.12.1; do
+    run as_dev zsh -c "cd \"\$(mktemp -d)\" \
+      && printf '{\"packageManager\":\"$pm\"}' > package.json \
+      && ${pm%@*} --version"
+    [ "$status" -eq 0 ] || {
+      echo "$pm: $output"
+      false
+    }
+    [ "${lines[-1]}" = "${pm#*@}" ]
+  done
+}
+
+# Same dependency on the registry, for the path a project with no opinion takes.
+@test "yarn and pnpm run where no packageManager is named" {
+  local tool
+  for tool in yarn pnpm; do
+    run as_dev zsh -c "cd \"\$(mktemp -d)\" && $tool --version"
+    [ "$status" -eq 0 ] || {
+      echo "$tool: $output"
+      false
+    }
+    [[ "${lines[-1]}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]
+  done
 }
 
 # The point of mise: a repo's .nvmrc picks its Node. Auto-install is off so
@@ -311,10 +358,10 @@ EOF
 # has at that path. Anything the build leaves there arrives once on a fresh
 # deploy and never updates. Asserted against the image, since this file's
 # shared box has run mise by now.
-@test "bakes no mise state into home" {
+@test "bakes no mise state or npm cache into home" {
   run docker run --rm --entrypoint sh "$IMAGE" -c \
     'ls -d /home/dev/.local/share/mise /home/dev/.cache/mise /home/dev/.local/state/mise \
-       /root/.local/share/mise /root/.cache/mise /root/.local/state/mise 2>/dev/null'
+       /root/.local/share/mise /root/.cache/mise /root/.local/state/mise /root/.npm 2>/dev/null'
   [ -z "$output" ]
 }
 

@@ -58,9 +58,10 @@
       "platformAutomerge": true
     },
     {
-      "description": "herdr is pre-1.0 and ships weekly, so a 0.x minor is a breaking change in practice - the one bump worth eyeballing.",
+      "description": "herdr and corepack are pre-1.0, so a 0.x minor is a breaking change in practice - herdr ships weekly, and corepack 0.35.0 put its breaking changes in a minor. The bumps worth eyeballing.",
       "matchDepNames": [
-        "herdrdev/herdr"
+        "herdrdev/herdr",
+        "corepack"
       ],
       "matchUpdateTypes": [
         "minor"
