@@ -200,7 +200,7 @@ RUN curl -fsSL https://downloads.claude.ai/keys/claude-code.asc -o /etc/apt/keyr
 # between rebuilds instead of between commits. oh-my-zsh ships no tags, so the
 # pin is a commit and Renovate bumps the digest.
 # renovate: datasource=git-refs depName=https://github.com/ohmyzsh/ohmyzsh
-ARG OMZ_REF=b509b1c6ed0c1ba37de12cbd37f30b2b2f61193a
+ARG OMZ_REF=c0140703a53eb0d22be44f7bac318d0baacc927c
 RUN mkdir -p /usr/local/share/afkd/zsh/omz \
     && curl -fsSL "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/${OMZ_REF}/lib/git.zsh" \
          -o /usr/local/share/afkd/zsh/omz/lib-git.zsh \
@@ -208,7 +208,7 @@ RUN mkdir -p /usr/local/share/afkd/zsh/omz \
          -o /usr/local/share/afkd/zsh/omz/git.plugin.zsh
 
 # renovate: datasource=github-releases depName=junegunn/fzf extractVersion=^v(?<version>.+)$
-ARG FZF_VERSION=0.74.5
+ARG FZF_VERSION=0.75.0
 RUN release="https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}" \
     && asset="fzf-${FZF_VERSION}-linux_${TARGETARCH}.tar.gz" \
     && tmp="$(mktemp -d)" \
@@ -306,7 +306,7 @@ RUN case "${TARGETARCH}" in \
 # at boot. The asset is checked against the checksums file from the same
 # release, and one missing from that file is refused rather than skipped.
 # renovate: datasource=github-releases depName=twpayne/chezmoi extractVersion=^v(?<version>.+)$
-ARG CHEZMOI_VERSION=2.74.0
+ARG CHEZMOI_VERSION=2.74.1
 RUN case "${TARGETARCH}" in \
       amd64|arm64) ;; \
       *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
@@ -325,7 +325,7 @@ RUN case "${TARGETARCH}" in \
 # base image: a repo's .nvmrc, .node-version, .python-version or .tool-versions
 # picks its own version. The binary is the static one from mise's own image,
 # pinned by digest like the base.
-COPY --from=ghcr.io/jdx/mise:2026.10.25@sha256:91417f41840316b7c5da6854bef393eccea4546ae70f8baf0803e0e94287b68d /usr/local/bin/mise /usr/local/bin/mise
+COPY --from=ghcr.io/jdx/mise:2026.11.12@sha256:991e2a550518ec5cae6f25adbc862ec0253ff714ee6e5e6bf328058a7324a041 /usr/local/bin/mise /usr/local/bin/mise
 # Not named config.toml in the repo: mise reads ./mise/config.toml as project
 # config, so every contributor running mise here got it as theirs -- an
 # untrusted-config error on every command, and once trusted, the image's Node.
@@ -353,7 +353,7 @@ ENV PATH="/usr/local/share/mise/shims:${PATH}"
 # mise also writes download scratch under root's home, which nothing reads at
 # runtime, so it is removed rather than shipped.
 # renovate: datasource=node-version depName=node
-ARG NODE_VERSION=24.22.2
+ARG NODE_VERSION=24.22.3
 RUN printf '\n[tools]\nnode = "%s"\n' "${NODE_VERSION}" >> /etc/mise/config.toml \
     && mise install --system \
     && corepack enable --install-directory /usr/local/bin yarn pnpm \
@@ -378,7 +378,7 @@ COPY codex/config.toml /etc/codex/config.toml
 # against a grep: a filename that matches nothing would hand -c an empty list,
 # so an empty lookup is refused explicitly.
 # renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>\d+\.\d+\.\d+)$
-ARG CODEX_VERSION=0.166.0
+ARG CODEX_VERSION=0.171.0
 RUN case "${TARGETARCH}" in \
       amd64) triple=x86_64-unknown-linux-musl ;; \
       arm64) triple=aarch64-unknown-linux-musl ;; \
@@ -401,7 +401,7 @@ RUN case "${TARGETARCH}" in \
 # rather than silently under an unchanged pin. Renovate reads the version from
 # npm, where Anthropic publishes the same numbers.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_CODE_VERSION=2.1.316
+ARG CLAUDE_CODE_VERSION=2.1.330
 RUN apt-get update \
     && apt-get install -y --no-install-recommends "claude-code=${CLAUDE_CODE_VERSION}-1" \
     && rm -rf /var/lib/apt/lists/*
